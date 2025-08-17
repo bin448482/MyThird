@@ -1,0 +1,98 @@
+# 自动投递简历工具配置文件示例
+# 复制此文件为 config.yaml 并修改相应配置
+
+# 基础配置
+app:
+  name: "Resume Auto Submitter"
+  version: "1.0.0"
+  debug: false
+
+# 数据库配置
+database:
+  path: "./data/jobs.db"
+
+# 网站配置
+websites:
+  zhilian:
+    enabled: true
+    base_url: "https://www.zhaopin.com"
+    login_url: "https://passport.zhaopin.com/login"
+    search_url: "https://sou.zhaopin.com"
+    login_check_element: ".user-info"
+    submit_button_selector: ".btn-apply"
+  
+  qiancheng:
+    enabled: true
+    base_url: "https://www.51job.com"
+    login_url: "https://login.51job.com"
+    search_url: "https://search.51job.com"
+    login_check_element: ".login-info"
+    submit_button_selector: ".apply-btn"
+  
+  boss:
+    enabled: true
+    base_url: "https://www.zhipin.com"
+    login_url: "https://login.zhipin.com"
+    search_url: "https://www.zhipin.com/c101010100"
+    login_check_element: ".user-name"
+    submit_button_selector: ".btn-startchat"
+
+# Selenium配置
+selenium:
+  browser: "chrome"  # chrome, firefox, edge
+  headless: false    # 人工登录需要显示浏览器
+  window_size: "1920,1080"
+  page_load_timeout: 30
+  element_wait_timeout: 10
+  implicit_wait: 5
+
+# 爬虫配置
+crawler:
+  delay_min: 2  # 最小延迟秒数
+  delay_max: 5  # 最大延迟秒数
+  max_retries: 3
+  login_wait_timeout: 300  # 等待人工登录超时时间(秒)
+
+# 防反爬配置
+anti_bot:
+  random_delay: true
+  mouse_simulation: true
+  user_agent_rotation: true
+  scroll_simulation: true
+
+# AI分析配置
+ai:
+  provider: "openai"  # openai, local, azure
+  model: "gpt-3.5-turbo"
+  api_key: "${OPENAI_API_KEY:your-api-key-here}"  # 使用环境变量或默认值
+  base_url: ""
+  temperature: 0.1
+  max_tokens: 1000
+
+# 匹配算法配置
+matching:
+  weights:
+    skills: 0.5
+    experience: 0.3
+    salary: 0.2
+  
+  thresholds:
+    auto_submit: 0.8  # 自动投递阈值
+    manual_review: 0.6  # 人工审核阈值
+    skip: 0.3  # 跳过阈值
+
+# 简历配置
+resume:
+  skills: ["Python", "Java", "React", "Node.js"]
+  experience_years: 3
+  expected_salary_min: 15000
+  expected_salary_max: 25000
+  preferred_locations: ["上海"]
+
+# 日志配置
+logging:
+  level: "INFO"
+  file_path: "./logs/app.log"
+  max_file_size: "10MB"
+  backup_count: 5
+  console_output: true
