@@ -70,6 +70,11 @@ class LoginTimeoutError(LoginError):
     pass
 
 
+class PageLoadTimeoutError(CrawlerError):
+    """页面加载超时异常"""
+    pass
+
+
 class APIError(AnalyzerError):
     """API调用异常"""
     pass
@@ -77,4 +82,24 @@ class APIError(AnalyzerError):
 
 class RateLimitError(APIError):
     """API速率限制异常"""
+    pass
+
+
+class SessionError(ResumeSubmitterError):
+    """会话相关异常"""
+    pass
+
+
+class ContentExtractionError(ResumeSubmitterError):
+    """内容提取相关异常"""
+    pass
+
+
+class PageParseError(ContentExtractionError):
+    """页面解析异常"""
+    pass
+
+
+class DataStorageError(ResumeSubmitterError):
+    """数据存储异常"""
     pass

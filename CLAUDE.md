@@ -216,6 +216,189 @@ resume:
   preferred_locations: ["上海"]
 ```
 
+## AI提示词模板
+
+### 职位分析提示词 (config/prompts/job_analysis.txt)
+```
+你是一个专业的职位分析专家。请分析以下职位信息，并以JSON格式输出结构化数据。
+
+职位信息：
+{job_description}
+
+请提取以下信息：
+1. 技能要求（skills）：列出所需的技术技能
+2. 工作经验要求（experience_years）：提取经验年限要求
+3. 薪资范围（salary_range）：提取薪资信息
+4. 工作地点（location）：提取工作地点
+5. 公司规模（company_size）：提取公司规模信息
+6. 职位标签（tags）：生成相关标签
+
+输出格式：
+{
+  "skills": ["技能1", "技能2"],
+  "experience_years": 数字,
+  "salary_min": 数字,
+  "salary_max": 数字,
+  "location": "地点",
+  "company_size": "规模",
+  "tags": ["标签1", "标签2"]
+}
+```
+
+### 匹配分析提示词 (config/prompts/matching.txt)
+```
+你是一个专业的简历匹配分析师。请分析候选人简历与职位要求的匹配度。
+
+候选人信息：
+{resume_info}
+
+职位要求：
+{job_requirements}
+
+请从以下维度分析匹配度（0-1分）：
+1. 技能匹配度（权重50%）
+2. 经验匹配度（权重30%）
+3. 薪资匹配度（权重20%）
+
+输出格式：
+{
+  "skills_match": 0.8,
+  "experience_match": 0.7,
+  "salary_match": 0.9,
+  "overall_score": 0.78,
+  "analysis": "详细分析说明"
+}
+```
+
+## 重构后的模块化架构
+
+### 登录功能分离
+
+系统已重构为模块化架构，将登录功能和内容提取功能完全分离：
+
+```
+┌─────────────────┐    ┌─────────────────┐
+│   登录模块      │    │   内容提取模块   │
+│                 │    │                 │
+│ ├─ LoginManager │    │ ├─ ContentExtractor
+│ ├─ SessionManager│    │ ├─ PageParser   │
+│ └─ BrowserManager│    │ └─ DataStorage  │
+└─────────────────┘    └─────────────────┘
+```
+
+### 新增模块配置
+
+```yaml
+# 运行模式配置
+mode:
+  development: true           # 开发模式
+  skip_login: false          # 跳过登录检查
+  use_saved_session: true    # 使用保存的会话
+  session_file: "data/session.json"
+  session_timeout: 3600      # 会话超时时间（秒）
+  auto_save_session: true    # 自动保存会话
+  close_on_complete: false   # 完成后是否关闭浏览器
+
+# 模块配置
+modules:
+  login:
+    enabled: true
+    auto_save_session: true
+  extraction:
+    enabled: true
+    max_concurrent: 1
+    retry_attempts: 3
+  browser:
+    reuse_session: true
+    close_on_complete: false
+```
+
+### 使用方式
+
+#### 1. 独立登录测试
+```bash
+# 基本登录测试
+python test_login.py
+
+# 登录并保存会话
+python test_login.py --save-session
+
+# 检查登录状态
+python test_login.py --check-status
+```
+
+#### 2. 独立内容提取测试
+```bash
+# 基于关键词提取
+python test_extraction.py --keyword "AI工程师"
+
+# 跳过登录检查（开发模式）
+python test_extraction.py --keyword "数据架构师" --skip-login
+
+# 批量提取多个关键词
+python test_extraction.py --multiple "AI工程师,数据架构师,Python工程师"
+```
+
+#### 3. 编程接口使用
+
+**独立登录管理：**
+```python
+from src.auth.login_manager import LoginManager
+
+with LoginManager(config) as login_manager:
+    success = login_manager.start_login_session(save_session=True)
+    if success:
+        print("登录成功，会话已保存")
+```
+
+**独立内容提取：**
+```python
+from src.extraction.content_extractor import ContentExtractor
+
+# 开发模式：跳过登录
+config['mode']['skip_login'] = True
+
+with ContentExtractor(config) as extractor:
+    results = extractor.extract_from_keyword("AI工程师", max_results=30)
+    print(f"提取到 {len(results)} 个职位")
+```
+
+**使用保存的会话：**
+```python
+# 配置使用保存的会话
+config['mode']['use_saved_session'] = True
+config['mode']['session_file'] = 'data/my_session.json'
+
+with ContentExtractor(config) as extractor:
+    results = extractor.extract_from_keyword("数据架构师")
+```
+
+### 重构优势
+
+1. **独立开发**: 登录和内容提取可以独立开发和测试
+2. **会话管理**: 支持会话保存和复用，提高效率
+3. **开发友好**: 支持跳过登录的开发模式
+4. **模块化配置**: 细粒度的配置控制
+5. **易于维护**: 清晰的职责分离
+
+### 迁移指南
+
+从旧版本迁移：
+```python
+# 旧版本
+automation = JobSearchAutomation()
+automation.start_search_session(keyword="AI工程师")
+
+# 新版本 - 分离式
+# 1. 先登录
+with LoginManager(config) as login_manager:
+    login_manager.start_login_session(save_session=True)
+
+# 2. 再提取内容
+with ContentExtractor(config) as extractor:
+    results = extractor.extract_from_keyword("AI工程师")
+```
+
 ## Notes
 
 - 使用人工登录避免验证码和风控检测
@@ -223,3 +406,7 @@ resume:
 - 支持断点续传，避免重复处理
 - 可配置匹配算法权重和阈值
 - 简化投递流程，只需点击按钮即可
+- 项目采用应用程序架构，直接运行main.py，无需安装包
+- **新增**: 支持登录功能分离，便于开发和调试
+- **新增**: 支持会话管理和复用，提高使用效率
+- **新增**: 支持开发模式，可跳过登录直接测试内容提取

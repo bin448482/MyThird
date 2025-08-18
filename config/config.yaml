@@ -1,0 +1,204 @@
+# 自动投递简历工具配置文件
+# 基于config.example.yaml创建的实际配置
+
+# 基础配置
+app:
+  name: "Resume Auto Submitter"
+  version: "1.0.0"
+  debug: true
+
+# 运行模式配置
+mode:
+  development: true           # 开发模式
+  skip_login: false          # 跳过登录检查
+  use_saved_session: true    # 使用保存的会话
+  session_file: "data/session.json"  # 会话文件路径
+  session_timeout: 3600      # 会话超时时间（秒）
+  auto_save_session: true    # 自动保存会话
+  close_on_complete: false   # 完成后是否关闭浏览器
+  reuse_session: true        # 重用浏览器会话
+
+# 数据库配置
+database:
+  path: "./data/jobs.db"
+  enabled: true              # 是否启用数据库存储
+
+# 网站配置
+websites:
+  zhilian:
+    enabled: true
+    base_url: "https://www.zhaopin.com"
+    login_url: "https://passport.zhaopin.com/login"
+    search_url: "https://sou.zhaopin.com"
+    login_check_element: ".user-info"
+    submit_button_selector: ".btn-apply"
+  
+  qiancheng:
+    enabled: true
+    base_url: "https://www.51job.com"
+    login_url: "https://login.51job.com"
+    search_url: "https://search.51job.com"
+    login_check_element: ".login-info"
+    submit_button_selector: ".apply-btn"
+  
+  boss:
+    enabled: true
+    base_url: "https://www.zhipin.com"
+    login_url: "https://login.zhipin.com"
+    search_url: "https://www.zhipin.com/c101010100"
+    login_check_element: ".user-name"
+    submit_button_selector: ".btn-startchat"
+
+# Selenium配置
+selenium:
+  browser: "chrome"  # chrome, firefox, edge
+  headless: false    # 测试时显示浏览器
+  window_size: "1920,1080"
+  page_load_timeout: 30
+  element_wait_timeout: 10
+  implicit_wait: 5
+
+# 爬虫配置
+crawler:
+  delay_min: 2  # 最小延迟秒数
+  delay_max: 5  # 最大延迟秒数
+  max_retries: 3
+  login_wait_timeout: 300  # 等待人工登录超时时间(秒)
+
+# 防反爬配置
+anti_bot:
+  random_delay: true
+  mouse_simulation: true
+  user_agent_rotation: true
+  scroll_simulation: true
+  mouse_speed: "normal"  # slow, normal, fast
+  scroll_speed: "normal"
+  typing_speed: "normal"
+  simulate_reading: true
+  random_navigation_order: true
+  rest_between_batches: true
+  detect_captcha: true
+  max_retry_attempts: 3
+
+# AI分析配置
+ai:
+  provider: "openai"  # openai, local, azure
+  model: "gpt-3.5-turbo"
+  api_key: "your-api-key-here"  # 测试时可以为空
+  base_url: ""
+  temperature: 0.1
+  max_tokens: 1000
+
+# 匹配算法配置
+matching:
+  weights:
+    skills: 0.5
+    experience: 0.3
+    salary: 0.2
+  
+  thresholds:
+    auto_submit: 0.8  # 自动投递阈值
+    manual_review: 0.6  # 人工审核阈值
+    skip: 0.3  # 跳过阈值
+
+# 简历配置
+resume:
+  skills: ["Python", "Java", "React", "Node.js"]
+  experience_years: 3
+  expected_salary_min: 15000
+  expected_salary_max: 25000
+  preferred_locations: ["上海"]
+
+# 搜索配置
+search:
+  # 基础搜索参数
+  base_url: "https://we.51job.com/pc/search"
+  job_area: "020000"  # 上海地区
+  search_type: "2"
+  keyword_type: ""
+  
+  # 搜索关键词列表 (按优先级排序)
+  keywords:
+    priority_1:
+      - "数据架构师"
+      - "Azure架构师"
+      - "AI工程师"
+    priority_2:
+      - "Databricks工程师"
+      - "技术总监"
+      - "机器学习工程师"
+    priority_3:
+      - "LLM工程师"
+      - "数据平台负责人"
+      - "制药 数据工程师"
+  
+  # 当前使用的关键词
+  current_keyword: "AI"
+  
+  # 搜索策略配置
+  strategy:
+    max_results_per_keyword: 50
+    delay_between_searches: 3
+    auto_scroll_pages: 5
+    save_job_details: true
+    # 分页配置
+    max_pages: 10              # 默认最大页数
+    enable_pagination: true    # 是否启用分页
+    page_delay: 2              # 页面间延迟时间（秒）
+    page_delay_max: 5          # 页面间最大延迟时间（秒）
+
+# 模块配置
+modules:
+  login:
+    enabled: true
+    auto_save_session: true
+    session_timeout: 3600    # 会话超时时间（秒）
+  
+  extraction:
+    enabled: true
+    max_concurrent: 1        # 最大并发数
+    retry_attempts: 3        # 重试次数
+    
+  browser:
+    reuse_session: true      # 重用浏览器会话
+    close_on_complete: false # 完成后是否关闭浏览器
+
+# 登录相关配置
+login:
+  login_url: "https://login.51job.com"
+  success_indicators:
+    - ".user-info"
+    - ".user-name"
+    - "[data-testid='user-avatar']"
+    - ".header-user"
+  wait_timeout: 300
+  check_interval: 2
+  failure_indicators:
+    - ".error-message"
+    - ".login-error"
+    - ".alert-danger"
+
+# 页面元素选择器
+selectors:
+  search_page:
+    job_list: ".joblist"
+    job_title: ".jname a"  # 修复：添加链接选择器
+    company_name: ".cname"
+    salary: ".sal"
+    location: ".area"
+    next_page: ".btn_next"
+  
+  job_detail:
+    job_description: ".job-description"
+    requirements: ".job-requirements"
+    company_info: ".company-info"
+    benefits: ".job-benefits"
+    apply_button: ".apply-btn"
+
+# 日志配置
+logging:
+  level: "INFO"
+  file_path: "./logs/app.log"
+  max_file_size: "10MB"
+  backup_count: 5
+  console_output: true

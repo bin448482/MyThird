@@ -34,7 +34,7 @@ ENV/
 # Project specific
 data/*.db
 logs/*.log
-config/config.yaml
+# config/config.yaml
 chromedriver*
 geckodriver*
 
