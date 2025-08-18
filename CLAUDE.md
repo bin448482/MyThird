@@ -286,6 +286,115 @@ resume:
 └─────────────────┘    └─────────────────┘
 ```
 
+### 最新更新：分页功能增强 (2025-01-18)
+
+#### 🚀 分页功能概述
+
+内容提取模块新增完整的分页功能，支持自动导航多页内容，大幅提升数据采集覆盖范围：
+
+- **默认配置**: 自动读取前10页内容
+- **智能导航**: 自动检测和点击下一页按钮
+- **多页合并**: 自动合并所有页面的提取结果
+- **页码标记**: 每个结果都标记来源页码
+- **错误恢复**: 单页失败不影响整体提取流程
+
+#### 📄 分页配置
+
+```yaml
+# 搜索策略配置 (config/config.yaml)
+search:
+  strategy:
+    max_pages: 10              # 默认最大页数
+    enable_pagination: true    # 是否启用分页
+    page_delay: 2              # 页面间延迟时间（秒）
+    page_delay_max: 5          # 页面间最大延迟时间（秒）
+```
+
+#### 🔧 核心分页方法
+
+**PageParser 新增方法：**
+
+1. **`has_next_page(driver)`** - 检测下一页按钮
+   - 支持多种选择器：`.btn_next`, `.next-page`, `.page-next`, `.pager-next`等
+   - 智能判断按钮是否可用（非禁用状态）
+
+2. **`navigate_to_next_page(driver)`** - 导航到下一页
+   - 模拟人类点击行为（悬停、滚动等）
+   - 验证页面跳转是否成功
+   - 支持AJAX加载的页面
+
+3. **`get_current_page_info(driver)`** - 获取页面信息
+   - 从URL参数和页面元素中提取页码
+   - 返回当前页码和页面状态
+
+**ContentExtractor 增强方法：**
+
+1. **`extract_from_search_url()`** - 支持多页提取
+   - 新增 `max_pages` 参数
+   - 实现页面循环逻辑
+   - 为每个结果添加 `page_number` 字段
+
+2. **`extract_from_keyword()`** - 关键词多页搜索
+   - 支持 `max_pages` 参数传递
+
+3. **`extract_multiple_keywords()`** - 批量多页提取
+   - 新增 `max_pages_per_keyword` 参数
+
+#### 💡 使用示例
+
+```python
+# 使用默认配置（10页）
+results = extractor.extract_from_keyword("AI工程师")
+
+# 自定义页数
+results = extractor.extract_from_keyword("AI工程师", max_pages=5)
+
+# 批量提取多个关键词，每个最多3页
+results = extractor.extract_multiple_keywords(
+    ["AI工程师", "数据工程师"],
+    max_pages_per_keyword=3
+)
+
+# 检查结果中的页码信息
+for job in results:
+    print(f"职位: {job['title']} - 来源: 第{job['page_number']}页")
+```
+
+#### 🧪 测试验证
+
+创建了专门的测试脚本验证分页功能：
+
+```bash
+# 运行分页功能测试
+python simple_pagination_test.py
+
+# 测试结果示例：
+# 📊 测试结果: 3/3 通过
+# 🎉 所有分页功能测试通过！
+#
+# 📝 分页功能特性:
+#   ✅ 配置文件支持分页参数
+#   ✅ PageParser 具备分页导航能力
+#   ✅ ContentExtractor 支持多页提取
+#   ✅ 多种下一页按钮选择器
+```
+
+#### 🎯 技术特性
+
+1. **智能分页检测** - 自动识别多种下一页按钮样式
+2. **人性化延迟** - 页面间2-5秒随机延迟，避免反爬检测
+3. **灵活配置** - 可通过配置文件或参数控制分页行为
+4. **结果追踪** - 每个职位都标记来源页码
+5. **错误恢复** - 单页失败不影响整体提取
+6. **资源优化** - 达到限制时自动停止，避免无效请求
+
+#### 📈 性能提升
+
+- **数据覆盖范围**: 从单页提升到多页（默认10页）
+- **采集效率**: 自动化分页导航，无需人工干预
+- **数据完整性**: 支持页码标记，便于数据溯源
+- **稳定性**: 智能错误恢复，提高采集成功率
+
 ### 新增模块配置
 
 ```yaml
