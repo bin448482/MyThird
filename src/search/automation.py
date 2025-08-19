@@ -20,9 +20,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 from .url_builder import SearchURLBuilder
 from .login_detector import LoginDetector
-from core.config import ConfigManager
-from core.exceptions import WebDriverError, LoginTimeoutError
-from utils.logger import setup_logger
+from ..core.config import ConfigManager
+from ..core.exceptions import WebDriverError, LoginTimeoutError
+from ..utils.logger import setup_logger
 
 
 class JobSearchAutomation:
@@ -228,7 +228,7 @@ class JobSearchAutomation:
             
             if not job_elements:
                 self.logger.warning("⚠️ 未找到职位列表，可能页面结构发生变化")
-                self._debug_page_structure()
+                self.logger.warning("💡 提示: 建议人工检查页面结构，可能需要更新选择器")
                 return
             
             self.logger.info(f"📋 找到 {len(job_elements)} 个职位")

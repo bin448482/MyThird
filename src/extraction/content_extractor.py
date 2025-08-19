@@ -273,7 +273,7 @@ class ContentExtractor:
                     
                     # 详情页：延长等待时间，避免反爬检测
                     if self.behavior_simulator:
-                        self.behavior_simulator.random_delay(2.0, 5.0)  # 详情页延长到2-5秒
+                        self.behavior_simulator.random_delay(1.0, 5.0)  # 详情页延长到2-5秒
                     else:
                         time.sleep(random.uniform(3.0, 8.0))  # 详情页延长到3-8秒
                     

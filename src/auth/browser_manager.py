@@ -12,7 +12,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
-from core.exceptions import WebDriverError
+from ..core.exceptions import WebDriverError
 
 
 class BrowserManager:

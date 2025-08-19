@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .browser_manager import BrowserManager
 from .session_manager import SessionManager
-from core.exceptions import LoginError, LoginTimeoutError
+from ..core.exceptions import LoginError, LoginTimeoutError
 
 
 class LoginManager:
