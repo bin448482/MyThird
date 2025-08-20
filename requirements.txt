@@ -21,13 +21,17 @@ loguru==0.7.2
 sqlite3  # 内置模块
 
 # RAG和AI相关依赖
-langchain==0.1.0
-langchain-community==0.0.10
-langchain-openai==0.0.5
-langchain-core==0.1.0
+langchain>=0.2.0
+langchain-community>=0.2.0
+langchain-openai>=0.1.0
+langchain-core>=0.2.0
+
+# 新的LangChain分离包
+langchain-huggingface>=0.0.1
+langchain-chroma>=0.1.0
 
 # 向量数据库
-chromadb==0.4.22
+chromadb>=0.4.22
 
 # 嵌入模型
 sentence-transformers==2.2.2

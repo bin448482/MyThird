@@ -1,0 +1,149 @@
+# RAG系统性能优化和错误处理配置
+
+# 性能优化配置
+performance_optimization:
+  # 缓存配置
+  cache:
+    max_size: 1000              # 最大缓存条目数
+    ttl_seconds: 3600           # 缓存生存时间（秒）
+    
+  # 批处理配置
+  batch_processing:
+    batch_size: 10              # 默认批处理大小
+    max_workers: 4              # 最大工作线程数
+    
+  # 内存管理配置
+  memory_management:
+    threshold_mb: 1000          # 内存阈值（MB）
+    auto_gc_threshold: 0.85     # 自动垃圾回收阈值（85%内存使用率）
+    
+  # 功能开关
+  enable_caching: true          # 启用缓存
+  enable_batch_processing: true # 启用批处理
+  enable_memory_monitoring: true # 启用内存监控
+
+# 错误处理配置
+error_handling:
+  # 重试策略配置
+  retry:
+    max_attempts: 3             # 最大重试次数
+    base_delay: 1.0             # 基础延迟时间（秒）
+    max_delay: 60.0             # 最大延迟时间（秒）
+    exponential_base: 2.0       # 指数退避基数
+    jitter: true                # 启用抖动
+    
+  # 错误报告配置
+  enable_error_reporting: true  # 启用错误报告
+  error_report_file: "./logs/rag_error_report.json"  # 错误报告文件路径
+  
+  # 错误恢复配置
+  enable_auto_recovery: true    # 启用自动错误恢复
+  recovery_strategies:
+    database_errors: true       # 启用数据库错误恢复
+    network_errors: true        # 启用网络错误恢复
+    api_errors: true           # 启用API错误恢复
+    resource_errors: true      # 启用资源错误恢复
+
+# RAG系统特定优化配置
+rag_system:
+  # 数据库优化
+  database:
+    path: "./data/jobs.db"
+    batch_size: 50              # 数据库批处理大小
+    connection_pool_size: 5     # 连接池大小
+    query_timeout: 30           # 查询超时时间（秒）
+    
+  # LLM优化配置
+  llm:
+    provider: "zhipu"
+    model: "glm-4-flash"
+    api_key: "${ZHIPU_API_KEY}" # 从环境变量读取
+    temperature: 0.1
+    max_tokens: 1500
+    timeout_seconds: 30         # API调用超时时间
+    retry_attempts: 3           # API重试次数
+    rate_limit_delay: 1.0       # 速率限制延迟
+    
+  # 向量数据库优化
+  vector_db:
+    persist_directory: "./data/chroma_db"
+    collection_name: "job_documents"
+    embeddings:
+      model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+      device: "cpu"
+      normalize_embeddings: true
+      batch_size: 32            # 嵌入批处理大小
+      
+  # 文档处理优化
+  documents:
+    types: ["overview", "responsibility", "requirement", "skills", "basic_requirements"]
+    max_content_length: 2000    # 最大内容长度
+    enable_content_compression: true  # 启用内容压缩
+    
+  # 处理流程优化
+  processing:
+    skip_processed: true        # 跳过已处理的职位
+    batch_size: 20              # 处理批次大小
+    max_concurrent_jobs: 10     # 最大并发处理职位数
+    enable_progress_tracking: true  # 启用进度跟踪
+    
+  # 性能监控配置
+  monitoring:
+    enable_performance_logging: true    # 启用性能日志
+    log_slow_operations: true          # 记录慢操作
+    slow_operation_threshold: 5.0      # 慢操作阈值（秒）
+    enable_memory_profiling: false     # 启用内存分析（开发模式）
+    
+  # 资源限制配置
+  resource_limits:
+    max_memory_usage_mb: 2048          # 最大内存使用（MB）
+    max_processing_time_minutes: 60    # 最大处理时间（分钟）
+    max_file_size_mb: 100             # 最大文件大小（MB）
+    max_concurrent_connections: 20     # 最大并发连接数
+
+# 日志配置
+logging:
+  level: "INFO"                 # 日志级别
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  handlers:
+    - type: "file"
+      filename: "./logs/rag_system.log"
+      max_bytes: 10485760       # 10MB
+      backup_count: 5
+    - type: "console"
+      level: "INFO"
+      
+  # 特定模块日志级别
+  loggers:
+    "src.rag.performance_optimizer": "DEBUG"
+    "src.rag.error_handler": "DEBUG"
+    "src.rag.rag_system_coordinator": "INFO"
+
+# 开发和调试配置
+development:
+  enable_debug_mode: false      # 启用调试模式
+  enable_profiling: false       # 启用性能分析
+  save_intermediate_results: false  # 保存中间结果
+  enable_detailed_logging: false    # 启用详细日志
+  
+# 生产环境配置
+production:
+  enable_health_checks: true    # 启用健康检查
+  health_check_interval: 300    # 健康检查间隔（秒）
+  enable_metrics_collection: true   # 启用指标收集
+  metrics_export_interval: 60       # 指标导出间隔（秒）
+  
+  # 安全配置
+  security:
+    enable_input_validation: true     # 启用输入验证
+    max_request_size_mb: 10          # 最大请求大小（MB）
+    enable_rate_limiting: true       # 启用速率限制
+    rate_limit_requests_per_minute: 100  # 每分钟请求限制
+
+# 测试环境配置
+testing:
+  use_mock_llm: true           # 使用模拟LLM
+  use_test_database: true      # 使用测试数据库
+  test_data_size: 100          # 测试数据大小
+  enable_test_logging: true    # 启用测试日志
+  cleanup_after_tests: true   # 测试后清理

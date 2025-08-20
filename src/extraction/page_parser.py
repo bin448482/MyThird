@@ -21,6 +21,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 from ..core.exceptions import PageParseError
+from ..utils.fingerprint import generate_job_fingerprint, extract_job_key_info
 
 
 class PageParser:
@@ -183,19 +184,14 @@ class PageParser:
                     self.logger.debug(f"使用选择器 '{job_list_selector}' 找到 {len(job_elements)} 个元素")
                     return job_elements
             
-            # 如果没找到，尝试其他可能的选择器
-            alternative_selectors = [
-                '.job-item',
-                '.position-item',
-                '.search-result-item',
-                '.list-item',
-                '[data-testid*="job"]',
-                '.joblist-item',
-                '.job-box',
-                '.position-box'
+            # 如果没找到，尝试51job的具体选择器（基于实际页面结构）
+            # 只保留最可能的选择器，避免无效的DOM查询
+            fallback_selectors = [
+                '.joblist-item',  # 51job的实际职位项选择器
+                '.job-item'       # 通用备选
             ]
             
-            for selector in alternative_selectors:
+            for selector in fallback_selectors:
                 try:
                     elements = driver.find_elements(By.CSS_SELECTOR, selector)
                     if elements:
@@ -228,11 +224,15 @@ class PageParser:
         }
         
         try:
-            # 职位标题和链接
-            self.logger.debug("📝 提取职位标题和链接...")
-            title_info = self._extract_title_and_url(job_element)
-            job_data.update(title_info)
-            self.logger.debug(f"📝 标题提取完成: {title_info.get('title', '未知')}")
+            # 职位标题
+            self.logger.debug("📝 提取职位标题...")
+            job_title = self._extract_title(job_element)
+            job_data.update({
+                'title': job_title,
+                'url': "",  # URL需要通过点击获取
+                'needs_click_extraction': True
+            })
+            self.logger.debug(f"📝 标题提取完成: {job_title}")
             
             # 公司名称
             self.logger.debug("🏢 提取公司名称...")
@@ -285,6 +285,17 @@ class PageParser:
             job_data.update(extra_info)
             self.logger.debug("ℹ️ 额外信息提取完成")
             
+            # 生成职位指纹
+            self.logger.debug("🔍 生成职位指纹...")
+            job_fingerprint = generate_job_fingerprint(
+                job_data.get('title', ''),
+                job_data.get('company', ''),
+                job_data.get('salary', ''),
+                job_data.get('location', '')
+            )
+            job_data['job_fingerprint'] = job_fingerprint
+            self.logger.debug(f"🔍 职位指纹: {job_fingerprint}")
+            
             self.logger.debug("✅ 职位元素解析完成")
             return job_data
             
@@ -294,22 +305,21 @@ class PageParser:
             self.logger.error(f"错误详情: {traceback.format_exc()}")
             return None
     
-    def _extract_title_and_url(self, job_element) -> Dict[str, str]:
+    def _extract_title(self, job_element) -> str:
         """
-        提取职位标题和链接（重构版本 - 简化逻辑）
+        提取职位标题
         
         Args:
             job_element: 职位元素
             
         Returns:
-            包含title、url和needs_click_extraction的字典
+            职位标题字符串
         """
         try:
             # 从配置中获取职位标题选择器
             title_selector = self.search_selectors.get('job_title', '.jname a')
             
             # 尝试提取职位标题
-            job_title = None
             try:
                 # 首先尝试配置的选择器
                 title_element = job_element.find_element(By.CSS_SELECTOR, title_selector)
@@ -323,19 +333,15 @@ class PageParser:
                 
                 if job_title:
                     self.logger.debug(f"通过配置选择器找到职位标题: {job_title}")
-                    # 找到标题就立即返回，不再查找URL
-                    return {
-                        'title': job_title,
-                        'url': "",
-                        'needs_click_extraction': True
-                    }
+                    return job_title
                     
             except Exception as e:
                 self.logger.debug(f"配置选择器 '{title_selector}' 未找到元素: {e}")
             
-            # 如果配置选择器失败，尝试备用选择器
-            backup_selectors = ['.jname', '.job-name', '.position-title']
-            for selector in backup_selectors:
+            # 如果配置选择器失败，尝试51job的具体选择器
+            fallback_selectors = ['.jname', '.jname a', '.job-title', '.position-title']
+            
+            for selector in fallback_selectors:
                 try:
                     title_element = job_element.find_element(By.CSS_SELECTOR, selector)
                     job_title = title_element.text.strip()
@@ -347,30 +353,18 @@ class PageParser:
                     
                     if job_title:
                         self.logger.debug(f"通过备用选择器 '{selector}' 找到职位标题: {job_title}")
-                        return {
-                            'title': job_title,
-                            'url': "",
-                            'needs_click_extraction': True
-                        }
+                        return job_title
                         
                 except Exception:
                     continue
             
             # 如果都没找到，返回默认值
             self.logger.warning("未找到职位标题")
-            return {
-                'title': "未知职位",
-                'url': "",
-                'needs_click_extraction': False
-            }
+            return "未知职位"
                 
         except Exception as e:
             self.logger.warning(f"提取职位标题失败: {e}")
-            return {
-                'title': "未知职位",
-                'url': "",
-                'needs_click_extraction': False
-            }
+            return "未知职位"
     
     def _extract_text_by_selector(self, parent_element, selector: str, default: str = "") -> str:
         """
@@ -406,35 +400,16 @@ class PageParser:
         extra_info = {}
         
         try:
-            # 尝试提取发布时间
-            time_selectors = ['.publish-time', '.update-time', '.time', '[data-time]']
-            for selector in time_selectors:
-                try:
-                    time_element = job_element.find_element(By.CSS_SELECTOR, selector)
-                    extra_info['publish_time'] = time_element.text.strip()
-                    break
-                except:
-                    continue
+            # 简化额外信息提取，只提取最重要的信息
+            # 发布时间（51job通常不在列表页显示）
+            publish_time = self._extract_text_by_selector(job_element, '.time', default="")
+            if publish_time:
+                extra_info['publish_time'] = publish_time
             
-            # 尝试提取公司规模
-            scale_selectors = ['.company-scale', '.company-size', '.scale']
-            for selector in scale_selectors:
-                try:
-                    scale_element = job_element.find_element(By.CSS_SELECTOR, selector)
-                    extra_info['company_scale'] = scale_element.text.strip()
-                    break
-                except:
-                    continue
-            
-            # 尝试提取行业信息
-            industry_selectors = ['.industry', '.company-industry', '.business']
-            for selector in industry_selectors:
-                try:
-                    industry_element = job_element.find_element(By.CSS_SELECTOR, selector)
-                    extra_info['industry'] = industry_element.text.strip()
-                    break
-                except:
-                    continue
+            # 公司规模（51job通常不在列表页显示）
+            company_scale = self._extract_text_by_selector(job_element, '.company-scale', default="")
+            if company_scale:
+                extra_info['company_scale'] = company_scale
             
         except Exception as e:
             self.logger.debug(f"提取额外信息时出错: {e}")
@@ -478,64 +453,62 @@ class PageParser:
                 'page_title': page_title
             }
             
-            # 尝试多种选择器提取职位描述（51job专用选择器优先）
+            # 使用多种选择器提取职位描述
+            description = ""
             description_selectors = [
-                '.bmsg.job_msg.inbox',  # 51job专用选择器
-                '.bmsg.job_msg',
-                '.job_msg.inbox',
-                '.bmsg',
-                '.job_msg',
-                self.detail_selectors.get('job_description', '.job-description'),
-                '.job-detail-content',
-                '.job-desc',
-                '.position-detail',
-                '.job-content',
-                '[class*="description"]',
-                '[class*="detail"]'
+                '.bmsg.job_msg.inbox',  # 51job精确选择器
+                '.bmsg',                # 51job简化选择器
+                '.job_msg',             # 51job备用选择器
+                '.job-detail-content',  # 通用选择器
+                '.job-description',     # 通用选择器
+                '.job_bt',              # 51job另一个可能的选择器
+                '[class*="job_msg"]',   # 包含job_msg的类名
+                '[class*="description"]' # 包含description的类名
             ]
             
             for selector in description_selectors:
-                description = self._extract_text_by_selector(driver, selector, default="")
-                if description and len(description) > 50:  # 确保获取到有意义的内容
-                    detail_data['description'] = description
-                    self.logger.info(f"✅ 使用选择器提取职位描述: {selector} (长度: {len(description)})")
-                    break
-            else:
-                detail_data['description'] = ""
-                self.logger.warning("⚠️ 未找到有效的职位描述内容")
+                try:
+                    description = self._extract_text_by_selector(driver, selector, default="")
+                    if description and len(description) > 20:  # 降低最小长度要求
+                        detail_data['description'] = description
+                        self.logger.info(f"✅ 使用选择器 '{selector}' 提取职位描述成功 (长度: {len(description)})")
+                        break
+                except Exception as e:
+                    self.logger.debug(f"选择器 '{selector}' 提取失败: {e}")
+                    continue
             
-            # 尝试多种选择器提取职位要求（51job通常在description中包含要求）
-            requirements_selectors = [
-                '.bmsg.job_msg.inbox',  # 51job通常职位要求和描述在同一个容器中
-                '.bmsg.job_msg',
-                '.job_msg.inbox',
-                self.detail_selectors.get('requirements', '.job-requirements'),
-                '.job-require',
-                '.position-require',
-                '.job-demand',
-                '[class*="requirement"]',
-                '[class*="require"]'
-            ]
-            
-            for selector in requirements_selectors:
-                requirements = self._extract_text_by_selector(driver, selector, default="")
-                if requirements and len(requirements) > 20:
-                    # 对于51job，职位要求通常和职位描述在同一容器中
-                    # 如果和description相同，则说明要求包含在描述中
-                    if requirements == detail_data.get('description', ''):
-                        detail_data['requirements'] = requirements
-                        self.logger.info(f"✅ 职位要求包含在描述中: {selector}")
+            if not description or len(description) <= 20:
+                # 如果所有选择器都失败，尝试获取页面主要文本内容
+                try:
+                    # 尝试获取页面body中的主要文本内容
+                    main_content = driver.execute_script("""
+                        // 尝试找到包含职位描述的主要内容区域
+                        var selectors = ['.bmsg', '.job_msg', '.job-detail', '.content', '.main'];
+                        for (var i = 0; i < selectors.length; i++) {
+                            var element = document.querySelector(selectors[i]);
+                            if (element && element.innerText && element.innerText.length > 50) {
+                                return element.innerText;
+                            }
+                        }
+                        return '';
+                    """)
+                    
+                    if main_content and len(main_content) > 20:
+                        detail_data['description'] = main_content
+                        self.logger.info(f"✅ 使用JavaScript提取职位描述成功 (长度: {len(main_content)})")
                     else:
-                        detail_data['requirements'] = requirements
-                        self.logger.info(f"✅ 使用选择器提取职位要求: {selector}")
-                    break
+                        detail_data['description'] = ""
+                        self.logger.warning("⚠️ 未找到有效的职位描述内容")
+                        
+                except Exception as e:
+                    detail_data['description'] = ""
+                    self.logger.warning(f"⚠️ JavaScript提取职位描述失败: {e}")
             else:
-                # 如果没有单独的要求字段，复制描述内容
-                if detail_data.get('description'):
-                    detail_data['requirements'] = detail_data['description']
-                    self.logger.info("ℹ️ 职位要求使用描述内容")
-                else:
-                    detail_data['requirements'] = ""
+                self.logger.debug(f"职位描述提取成功，长度: {len(description)} 字符")
+            
+            # 对于51job，职位要求通常包含在描述中，不需要单独提取
+            # 避免重复内容，直接设置为空，让RAG系统后续处理
+            detail_data['requirements'] = ""
             
             # 快速设置默认值，避免不必要的DOM查询
             detail_data['company_info'] = ""
@@ -548,21 +521,21 @@ class PageParser:
             if is_debug_mode:
                 self.logger.debug("🔧 开发模式: 提取额外信息...")
                 
-                # 公司信息 - 简化选择器
-                company_selectors = ['.company-info', '.company-detail']
-                for selector in company_selectors:
-                    company_info = self._extract_text_by_selector(driver, selector, default="")
-                    if company_info:
-                        detail_data['company_info'] = company_info
-                        break
+                # 公司信息 - 使用配置中的选择器
+                company_info = self._extract_text_by_selector(
+                    driver,
+                    self.detail_selectors.get('company_info', '.company-info'),
+                    default=""
+                )
+                detail_data['company_info'] = company_info
                 
-                # 福利待遇 - 简化选择器
-                benefits_selectors = ['.job-benefits', '.welfare', '.benefits']
-                for selector in benefits_selectors:
-                    benefits = self._extract_text_by_selector(driver, selector, default="")
-                    if benefits:
-                        detail_data['benefits'] = benefits
-                        break
+                # 福利待遇 - 使用配置中的选择器
+                benefits = self._extract_text_by_selector(
+                    driver,
+                    self.detail_selectors.get('benefits', '.job-benefits'),
+                    default=""
+                )
+                detail_data['benefits'] = benefits
             else:
                 self.logger.debug("🚀 生产模式: 跳过额外信息提取以提升性能")
             
@@ -618,197 +591,6 @@ class PageParser:
             self.logger.error(f"获取页面信息失败: {e}")
             return {}
     
-    def extract_job_urls_by_clicking(self,
-                                   driver: webdriver.Chrome,
-                                   max_jobs: int = 10) -> List[Dict[str, Any]]:
-        """
-        通过模拟点击职位标题提取详情页URL
-        
-        这是PageParser的核心功能之一，负责：
-        1. 识别页面中的职位标题元素
-        2. 模拟人类点击行为获取详情页URL
-        3. 处理页面交互和窗口切换
-        4. 返回结构化的URL数据
-        
-        Args:
-            driver: WebDriver实例（由ContentExtractor提供）
-            max_jobs: 最大提取数量
-            
-        Returns:
-            职位URL信息列表，包含标题、URL、提取时间等
-        """
-        try:
-            self.logger.info(f"🚀 开始通过点击提取职位URL，最大数量: {max_jobs}")
-            
-            # 等待页面加载完成
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".jname"))
-            )
-            
-            # 根据配置选择等待策略
-            config_mode = getattr(self, 'config', {}).get('mode', {})
-            is_debug_mode = config_mode.get('development', False) or config_mode.get('debug', False)
-            
-            if is_debug_mode:
-                # 开发模式：最小等待
-                initial_wait = random.uniform(0.2, 0.5)
-                self.logger.debug(f"开发模式 - 初始等待 {initial_wait:.1f} 秒")
-            else:
-                # 生产模式：正常等待
-                initial_wait = random.uniform(1.0, 2.0)
-                self.logger.debug(f"生产模式 - 初始等待 {initial_wait:.1f} 秒")
-            
-            time.sleep(initial_wait)
-            
-            # 查找所有职位标题元素
-            job_title_elements = driver.find_elements(By.CSS_SELECTOR, ".jname")
-            self.logger.info(f"✅ 找到 {len(job_title_elements)} 个职位标题")
-            
-            if not job_title_elements:
-                self.logger.warning("⚠️ 未找到职位标题元素")
-                return []
-            
-            # 限制提取数量
-            jobs_to_process = min(len(job_title_elements), max_jobs)
-            extracted_urls = []
-            
-            for i in range(jobs_to_process):
-                try:
-                    # 重新获取元素（避免stale element异常）
-                    job_title_elements = driver.find_elements(By.CSS_SELECTOR, ".jname")
-                    if i >= len(job_title_elements):
-                        break
-                        
-                    job_element = job_title_elements[i]
-                    job_title = job_element.text.strip()
-                    
-                    self.logger.info(f"🎯 处理第 {i+1} 个职位: {job_title}")
-                    
-                    # 记录当前窗口句柄
-                    original_windows = driver.window_handles
-                    
-                    # 模拟人类滚动行为
-                    self._simulate_human_scroll(driver, job_element)
-                    
-                    # 模拟鼠标悬停（可选）
-                    if random.random() < 0.3:  # 30%概率悬停
-                        ActionChains(driver).move_to_element(job_element).perform()
-                        time.sleep(random.uniform(0.2, 0.8))
-                    
-                    # 点击职位标题
-                    ActionChains(driver).click(job_element).perform()
-                    
-                    # 根据模式调整等待时间
-                    if is_debug_mode:
-                        wait_time = random.uniform(0.3, 0.8)  # 开发模式缩短等待
-                    else:
-                        wait_time = random.uniform(1.0, 2.0)  # 生产模式正常等待
-                    time.sleep(wait_time)
-                    
-                    # 检查是否有新窗口打开
-                    new_windows = driver.window_handles
-                    if len(new_windows) > len(original_windows):
-                        # 切换到新窗口
-                        new_window = [w for w in new_windows if w not in original_windows][0]
-                        driver.switch_to.window(new_window)
-                        
-                        # 短暂等待页面加载
-                        time.sleep(random.uniform(0.5, 1.5))
-                        
-                        # 获取详情页URL
-                        detail_url = driver.current_url
-                        
-                        job_info = {
-                            'index': i + 1,
-                            'title': job_title,
-                            'detail_url': detail_url,
-                            'extracted_at': datetime.now().isoformat()
-                        }
-                        
-                        extracted_urls.append(job_info)
-                        self.logger.info(f"✅ 成功提取: {detail_url}")
-                        
-                        # 关闭新窗口并切换回原窗口
-                        driver.close()
-                        driver.switch_to.window(original_windows[0])
-                        
-                        # 根据模式调整思考时间
-                        if is_debug_mode:
-                            think_time = random.uniform(0.1, 0.3)  # 开发模式快速
-                        else:
-                            think_time = random.uniform(0.5, 2.0)  # 生产模式正常
-                        time.sleep(think_time)
-                        
-                    else:
-                        self.logger.warning(f"⚠️ 点击 {job_title} 未打开新窗口")
-                    
-                    # 每处理几个职位后，模拟更长的休息
-                    if (i + 1) % random.randint(3, 6) == 0 and not is_debug_mode:
-                        rest_time = random.uniform(2.0, 5.0)
-                        self.logger.debug(f"⏳ 模拟用户休息 {rest_time:.1f} 秒")
-                        time.sleep(rest_time)
-                    elif is_debug_mode and (i + 1) % 5 == 0:
-                        # 开发模式偶尔短暂休息
-                        rest_time = random.uniform(0.2, 0.5)
-                        self.logger.debug(f"⏳ 开发模式短暂休息 {rest_time:.1f} 秒")
-                        time.sleep(rest_time)
-                        
-                except Exception as e:
-                    self.logger.warning(f"❌ 处理职位 {i+1} 时出错: {e}")
-                    # 确保回到原窗口
-                    if len(driver.window_handles) > 1:
-                        driver.switch_to.window(driver.window_handles[0])
-                    
-                    # 根据模式调整错误后等待时间
-                    if is_debug_mode:
-                        error_wait = random.uniform(0.5, 1.0)  # 开发模式快速重试
-                    else:
-                        error_wait = random.uniform(3.0, 8.0)  # 生产模式正常等待
-                    time.sleep(error_wait)
-                    continue
-            
-            self.logger.info(f"🎉 成功提取 {len(extracted_urls)} 个职位URL")
-            return extracted_urls
-            
-        except Exception as e:
-            self.logger.error(f"❌ 点击提取URL过程出错: {e}")
-            raise PageParseError(f"点击提取URL失败: {e}")
-    
-    def _simulate_human_scroll(self, driver: webdriver.Chrome, target_element) -> None:
-        """
-        模拟人类滚动行为
-        
-        Args:
-            driver: WebDriver实例
-            target_element: 目标元素
-        """
-        try:
-            # 获取元素位置
-            element_location = target_element.location_once_scrolled_into_view
-            
-            # 模拟分步滚动而不是直接滚动到元素
-            current_scroll = driver.execute_script("return window.pageYOffset;")
-            target_scroll = element_location['y'] - random.randint(100, 300)  # 留一些余量
-            
-            if abs(target_scroll - current_scroll) > 100:
-                # 分多步滚动
-                steps = random.randint(2, 4)
-                scroll_step = (target_scroll - current_scroll) / steps
-                
-                for step in range(steps):
-                    scroll_to = current_scroll + scroll_step * (step + 1)
-                    driver.execute_script(f"window.scrollTo(0, {scroll_to});")
-                    time.sleep(random.uniform(0.1, 0.3))
-            
-            # 最后精确滚动到元素
-            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", target_element)
-            time.sleep(random.uniform(0.3, 0.8))
-            
-        except Exception as e:
-            self.logger.debug(f"模拟滚动失败: {e}")
-            # 回退到简单滚动
-            driver.execute_script("arguments[0].scrollIntoView(true);", target_element)
-            time.sleep(0.5)
     
     def has_next_page(self, driver: webdriver.Chrome) -> bool:
         """
@@ -986,24 +768,21 @@ class PageParser:
                     except (ValueError, IndexError):
                         continue
             
-            # 尝试从页面元素中获取页码信息
-            page_selectors = [
-                '.current-page',
-                '.active-page',
-                '.pagination .active',
-                '.page-current',
-                '.pager-current'
-            ]
-            
-            for selector in page_selectors:
+            # 尝试从页面元素中获取页码信息 - 使用最常见的选择器
+            try:
+                page_element = driver.find_element(By.CSS_SELECTOR, '.pagination .active')
+                page_text = page_element.text.strip()
+                if page_text.isdigit():
+                    page_info['current_page'] = int(page_text)
+            except:
+                # 如果失败，尝试51job的页码选择器
                 try:
-                    page_element = driver.find_element(By.CSS_SELECTOR, selector)
+                    page_element = driver.find_element(By.CSS_SELECTOR, '.current-page')
                     page_text = page_element.text.strip()
                     if page_text.isdigit():
                         page_info['current_page'] = int(page_text)
-                        break
                 except:
-                    continue
+                    pass
             
             return page_info
             

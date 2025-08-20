@@ -214,7 +214,7 @@ class DocumentCreator:
             skill_lower = skill.lower()
             if any(tech in skill_lower for tech in ['python', 'java', 'javascript', 'sql', 'html', 'css']):
                 technical_skills.append(skill)
-            elif any(tool in skill_lower for tech in ['git', 'docker', 'kubernetes', 'aws', 'azure']):
+            elif any(tool in skill_lower for tool in ['git', 'docker', 'kubernetes', 'aws', 'azure']):
                 tools_skills.append(skill)
             else:
                 soft_skills.append(skill)
@@ -234,10 +234,10 @@ class DocumentCreator:
         metadata = base_metadata.copy()
         metadata.update({
             "type": "skills",
-            "skills": job_structure.skills,
-            "technical_skills": technical_skills,
-            "soft_skills": soft_skills,
-            "tools_skills": tools_skills,
+            "skills": ", ".join(job_structure.skills),  # 转换为字符串
+            "technical_skills": ", ".join(technical_skills),  # 转换为字符串
+            "soft_skills": ", ".join(soft_skills),  # 转换为字符串
+            "tools_skills": ", ".join(tools_skills),  # 转换为字符串
             "doc_id": f"{base_metadata['doc_id_prefix']}_skills",
             "priority": 3
         })

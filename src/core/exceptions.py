@@ -103,3 +103,23 @@ class PageParseError(ContentExtractionError):
 class DataStorageError(ResumeSubmitterError):
     """数据存储异常"""
     pass
+
+
+class RAGSystemError(ResumeSubmitterError):
+    """RAG系统相关异常"""
+    pass
+
+
+class VectorStoreError(RAGSystemError):
+    """向量存储相关异常"""
+    pass
+
+
+class DocumentProcessingError(RAGSystemError):
+    """文档处理相关异常"""
+    pass
+
+
+class LLMProcessingError(RAGSystemError):
+    """LLM处理相关异常"""
+    pass

@@ -6,14 +6,13 @@ LangChain职位处理器
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
-from langchain.llms import OpenAI
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from langchain.output_parsers import PydanticOutputParser
+from langchain_core.output_parsers import StrOutputParser
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 import json
 import logging
+from .llm_factory import create_llm
 
 logger = logging.getLogger(__name__)
 
@@ -36,25 +35,28 @@ class JobStructure(BaseModel):
 class LangChainJobProcessor:
     """基于LangChain的职位数据处理器"""
     
-    def __init__(self, llm_model: str = "gpt-3.5-turbo", config: Dict = None):
+    def __init__(self, llm_config: Dict = None, config: Dict = None):
         """
         初始化职位处理器
         
         Args:
-            llm_model: LLM模型名称
-            config: 配置字典
+            llm_config: LLM配置字典，包含provider、api_key等
+            config: 其他配置字典
         """
         self.config = config or {}
+        self.llm_config = llm_config or {}
+        
+        # 获取LLM提供商和配置
+        provider = self.llm_config.get('provider', 'zhipu')
         
         # 初始化LLM
-        self.llm = OpenAI(
-            model_name=llm_model,
-            temperature=self.config.get('temperature', 0.1),
-            max_tokens=self.config.get('max_tokens', 2000)
+        self.llm = create_llm(
+            provider=provider,
+            model=self.llm_config.get('model', 'glm-4-flash' if provider == 'zhipu' else 'gpt-3.5-turbo'),
+            temperature=self.llm_config.get('temperature', 0.1),
+            max_tokens=self.llm_config.get('max_tokens', 2000),
+            **{k: v for k, v in self.llm_config.items() if k not in ['provider', 'model', 'temperature', 'max_tokens']}
         )
-        
-        # 初始化输出解析器
-        self.output_parser = PydanticOutputParser(pydantic_object=JobStructure)
         
         # 构建结构化提取链
         self.extraction_chain = self._build_extraction_chain()
@@ -62,40 +64,55 @@ class LangChainJobProcessor:
         # 初始化语义分割器
         self.semantic_splitter = self._build_semantic_splitter()
         
-        logger.info(f"LangChain职位处理器初始化完成，使用模型: {llm_model}")
+        logger.info(f"LangChain职位处理器初始化完成，使用提供商: {provider}")
     
-    def _build_extraction_chain(self) -> LLMChain:
+    def _build_extraction_chain(self):
         """构建结构化提取链"""
         
         prompt_template = """
-你是专业的HR数据分析师。请分析以下职位描述，将其结构化提取。
+你是专业的HR数据分析师。请分析以下职位描述，将其结构化提取为JSON格式。
 
 职位文本：
 {job_text}
 
+请严格按照以下JSON格式输出，不要包含任何其他内容：
+
+{{
+    "job_title": "从职位标题中提取的职位名称",
+    "company": "从职位信息中提取的公司名称",
+    "responsibilities": ["职责1", "职责2", "职责3"],
+    "requirements": ["要求1", "要求2", "要求3"],
+    "skills": ["技能1", "技能2", "技能3"],
+    "education": "学历要求",
+    "experience": "经验要求",
+    "salary_min": 最低薪资数字或null,
+    "salary_max": 最高薪资数字或null,
+    "location": "工作地点或null",
+    "company_size": "公司规模或null"
+}}
+
 提取要求：
-1. 准确分离岗位职责和人员要求
-2. 提取所有技能关键词
-3. 识别学历和经验要求
-4. 提取薪资范围和工作地点
-5. 确保信息完整且不重复
+1. 职位名称提取：
+   - 如果文本中包含"【职位名称_职位招聘_公司名称】"格式，提取其中的职位名称
+   - 如果包含"上海AI工程师"等格式，提取"AI工程师"作为职位名称
+   - 优先从页面标题或明显的职位标识中提取
+2. 从岗位职责部分提取responsibilities
+3. 从人员要求部分提取requirements
+4. 识别所有技术技能关键词
+5. 提取学历和工作经验要求
+6. 如果有薪资信息，提取数字部分
+7. 只输出JSON，不要其他解释文字
 
-{format_instructions}
-
-结构化输出：
+JSON输出：
 """
         
         prompt = PromptTemplate(
             template=prompt_template,
-            input_variables=["job_text"],
-            partial_variables={"format_instructions": self.output_parser.get_format_instructions()}
+            input_variables=["job_text"]
         )
         
-        return LLMChain(
-            llm=self.llm,
-            prompt=prompt,
-            output_parser=self.output_parser
-        )
+        # 使用新的LangChain API
+        return prompt | self.llm | StrOutputParser()
     
     def _build_semantic_splitter(self) -> RecursiveCharacterTextSplitter:
         """构建语义分割器"""
@@ -131,30 +148,93 @@ class LangChainJobProcessor:
             job_text = self._extract_job_text(job_json)
             
             # 使用LLM结构化提取
-            result = await self.extraction_chain.arun(job_text=job_text)
+            llm_result = await self.extraction_chain.ainvoke({"job_text": job_text})
             
-            logger.info(f"成功提取职位信息: {result.job_title}")
-            return result
+            # 解析LLM返回的JSON
+            parsed_result = self._parse_llm_result(llm_result)
+            
+            # 创建JobStructure对象
+            job_structure = JobStructure(**parsed_result)
+            
+            logger.info(f"成功提取职位信息: {job_structure.job_title}")
+            return job_structure
             
         except Exception as e:
             logger.error(f"LLM提取失败，使用备用方案: {e}")
             return self._fallback_extraction(job_json)
     
+    def _parse_llm_result(self, llm_result: str) -> Dict:
+        """
+        解析LLM返回的结果
+        
+        Args:
+            llm_result: LLM返回的字符串
+            
+        Returns:
+            Dict: 解析后的字典
+        """
+        try:
+            # 清理结果字符串
+            cleaned_result = llm_result.strip()
+            
+            # 如果结果包含```json标记，提取JSON部分
+            if "```json" in cleaned_result:
+                start = cleaned_result.find("```json") + 7
+                end = cleaned_result.find("```", start)
+                if end != -1:
+                    cleaned_result = cleaned_result[start:end].strip()
+            elif "```" in cleaned_result:
+                start = cleaned_result.find("```") + 3
+                end = cleaned_result.find("```", start)
+                if end != -1:
+                    cleaned_result = cleaned_result[start:end].strip()
+            
+            # 尝试解析JSON
+            parsed = json.loads(cleaned_result)
+            
+            # 验证必需字段
+            required_fields = ["job_title", "company", "responsibilities", "requirements", "skills", "education", "experience"]
+            for field in required_fields:
+                if field not in parsed:
+                    parsed[field] = [] if field in ["responsibilities", "requirements", "skills"] else "不限"
+            
+            return parsed
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON解析失败: {e}, 原始结果: {llm_result[:200]}...")
+            raise ValueError(f"无法解析LLM返回的JSON: {e}")
+        except Exception as e:
+            logger.error(f"结果解析失败: {e}")
+            raise ValueError(f"结果解析错误: {e}")
+    
     def _extract_job_text(self, job_json: Dict) -> str:
         """从JSON中提取职位文本"""
-        text_fields = ['description', 'requirements', 'content', 'detail']
-        
-        for field in text_fields:
-            if field in job_json and job_json[field]:
-                return str(job_json[field])
-        
-        # 如果没有找到标准字段，尝试合并所有文本字段
         text_parts = []
-        for key, value in job_json.items():
-            if isinstance(value, str) and len(value) > 20:
-                text_parts.append(value)
         
-        return '\n'.join(text_parts) if text_parts else str(job_json)
+        # 优先添加page_title，因为它包含职位名称
+        if 'page_title' in job_json and job_json['page_title']:
+            text_parts.append(f"页面标题: {job_json['page_title']}")
+        
+        # 添加主要内容字段
+        main_fields = ['description', 'requirements', 'content', 'detail']
+        for field in main_fields:
+            if field in job_json and job_json[field]:
+                text_parts.append(f"{field}: {job_json[field]}")
+        
+        # 如果还没有足够内容，添加其他有用字段
+        if len(text_parts) < 2:
+            other_fields = ['url', 'company_info', 'benefits']
+            for field in other_fields:
+                if field in job_json and job_json[field] and len(str(job_json[field])) > 10:
+                    text_parts.append(f"{field}: {job_json[field]}")
+        
+        # 如果仍然没有内容，合并所有文本字段
+        if not text_parts:
+            for key, value in job_json.items():
+                if isinstance(value, str) and len(value) > 20:
+                    text_parts.append(f"{key}: {value}")
+        
+        return '\n\n'.join(text_parts) if text_parts else str(job_json)
     
     def _fallback_extraction(self, job_json: Dict) -> JobStructure:
         """备用提取方案"""

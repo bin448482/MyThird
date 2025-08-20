@@ -5,16 +5,18 @@ RAG检索问答链
 """
 
 from langchain.chains import RetrievalQA
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
-from langchain.llms import OpenAI
+# from langchain.chains.question_answering import load_qa_chain  # 已弃用
+from langchain.prompts import PromptTemplate, ChatPromptTemplate
 from langchain.schema import Document
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 from typing import Dict, List, Optional, Any
 import logging
 import json
 from datetime import datetime
 
 from .vector_manager import ChromaDBManager
+from .llm_factory import create_llm
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +30,21 @@ class JobRAGSystem:
         
         Args:
             vectorstore_manager: 向量存储管理器
-            config: 配置字典
+            config: 配置字典，包含llm配置
         """
         self.vectorstore_manager = vectorstore_manager
         self.config = config or {}
         
         # 初始化LLM
         llm_config = self.config.get('llm', {})
-        self.llm = OpenAI(
-            model_name=llm_config.get('model', 'gpt-3.5-turbo'),
+        provider = llm_config.get('provider', 'zhipu')
+        
+        self.llm = create_llm(
+            provider=provider,
+            model=llm_config.get('model', 'glm-4-flash' if provider == 'zhipu' else 'gpt-3.5-turbo'),
             temperature=llm_config.get('temperature', 0.2),
-            max_tokens=llm_config.get('max_tokens', 2000)
+            max_tokens=llm_config.get('max_tokens', 2000),
+            **{k: v for k, v in llm_config.items() if k not in ['provider', 'model', 'temperature', 'max_tokens']}
         )
         
         # 构建问答链
@@ -76,13 +82,22 @@ class JobRAGSystem:
         )
     
     def _build_qa_chain(self) -> Any:
-        """构建问答链"""
+        """构建问答链 - 使用新的LCEL方式"""
         
-        return load_qa_chain(
-            llm=self.llm,
-            chain_type="stuff",
-            prompt=self._build_qa_prompt()
+        # 使用新的LCEL方式构建问答链
+        qa_prompt = self._build_qa_prompt()
+        
+        def format_docs(docs):
+            return "\n\n".join(doc.page_content for doc in docs)
+        
+        chain = (
+            {"context": format_docs, "question": RunnablePassthrough()}
+            | qa_prompt
+            | self.llm
+            | StrOutputParser()
         )
+        
+        return chain
     
     def _build_retrieval_qa(self) -> RetrievalQA:
         """构建检索QA链"""
@@ -114,8 +129,8 @@ class JobRAGSystem:
         try:
             # 检索相关文档
             relevant_docs = self.vectorstore_manager.hybrid_search(
-                query=question, 
-                filters=filters, 
+                query=question,
+                filters=filters,
                 k=k
             )
             
@@ -126,17 +141,14 @@ class JobRAGSystem:
                     "confidence": 0.0
                 }
             
-            # 使用检索QA链生成回答
-            result = await self.retrieval_qa.arun(
-                query=question,
-                source_documents=relevant_docs
-            )
+            # 使用新的API进行问答
+            answer = await self._generate_answer_with_context(question, relevant_docs)
             
             # 计算置信度
             confidence = self._calculate_confidence(relevant_docs, question)
             
             return {
-                "answer": result.get("result", result) if isinstance(result, dict) else result,
+                "answer": answer,
                 "source_documents": [
                     {
                         "content": doc.page_content,
@@ -158,6 +170,57 @@ class JobRAGSystem:
                 "confidence": 0.0,
                 "error": str(e)
             }
+    
+    async def _generate_answer_with_context(self, question: str, documents: List[Document]) -> str:
+        """
+        基于上下文生成回答
+        
+        Args:
+            question: 用户问题
+            documents: 相关文档
+            
+        Returns:
+            str: 生成的回答
+        """
+        try:
+            # 构建上下文
+            context = "\n\n".join([
+                f"文档{i+1}: {doc.page_content}"
+                for i, doc in enumerate(documents)
+            ])
+            
+            # 创建问答提示
+            qa_prompt = ChatPromptTemplate.from_messages([
+                ("system", """你是专业的职位匹配顾问。基于以下职位信息回答用户问题。
+
+回答要求：
+1. 基于提供的职位信息回答
+2. 如果信息不足，明确说明
+3. 提供具体的职位匹配建议
+4. 回答要专业且有帮助
+5. 如果涉及多个职位，请分别说明"""),
+                ("human", """职位信息：
+{context}
+
+用户问题：{question}
+
+请基于上述职位信息回答问题：""")
+            ])
+            
+            # 创建处理链
+            chain = qa_prompt | self.llm | StrOutputParser()
+            
+            # 生成回答
+            answer = await chain.ainvoke({
+                "context": context,
+                "question": question
+            })
+            
+            return answer
+            
+        except Exception as e:
+            logger.error(f"生成回答失败: {e}")
+            return f"生成回答时出现错误: {str(e)}"
     
     def _calculate_confidence(self, documents: List[Document], question: str) -> float:
         """

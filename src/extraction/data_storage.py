@@ -15,6 +15,8 @@ from datetime import datetime
 import hashlib
 
 from ..core.exceptions import DataStorageError
+from ..utils.fingerprint import generate_job_fingerprint, extract_job_key_info
+from ..database.operations import DatabaseManager
 
 
 class DataStorage:
@@ -176,7 +178,7 @@ class DataStorage:
     
     def _save_to_database(self, results: List[Dict], keyword: str) -> bool:
         """
-        保存到SQLite数据库（使用CLAUDE.md中定义的表结构）
+        保存到SQLite数据库（使用指纹去重）
         
         Args:
             results: 结果数据
@@ -186,43 +188,55 @@ class DataStorage:
             是否保存成功
         """
         try:
-            # 确保数据库目录存在
-            db_path = Path(self.db_path)
-            db_path.parent.mkdir(parents=True, exist_ok=True)
+            # 使用DatabaseManager进行操作
+            db_manager = DatabaseManager(self.db_path)
+            db_manager.init_database()
             
-            with sqlite3.connect(self.db_path) as conn:
-                # 创建表（如果不存在）
-                self._create_tables(conn)
+            saved_count = 0
+            skipped_count = 0
+            
+            for result in results:
+                # 生成job_id和指纹
+                job_url = result.get('url', '')
+                job_id = self._generate_job_id(job_url, result.get('title', ''), result.get('company', ''))
                 
-                # 插入数据
-                cursor = conn.cursor()
+                # 生成职位指纹
+                job_fingerprint = generate_job_fingerprint(
+                    result.get('title', ''),
+                    result.get('company', ''),
+                    result.get('salary', ''),
+                    result.get('location', '')
+                )
                 
-                for result in results:
-                    # 生成job_id（基于URL的哈希值）
-                    job_url = result.get('url', '')
-                    job_id = self._generate_job_id(job_url, result.get('title', ''), result.get('company', ''))
-                    
-                    # 插入职位数据（使用CLAUDE.md中定义的表结构）
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO jobs (
-                            job_id, title, company, url, application_status, 
-                            match_score, website, created_at, submitted_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        job_id,
-                        result.get('title', ''),
-                        result.get('company', ''),
-                        job_url,
-                        'pending',  # 默认状态
-                        None,  # 匹配度评分待后续计算
-                        'qiancheng',  # 来源网站
-                        datetime.now().isoformat(),
-                        None  # 投递时间
-                    ))
+                # 检查指纹是否已存在
+                if db_manager.fingerprint_exists(job_fingerprint):
+                    skipped_count += 1
+                    self.logger.debug(f"跳过重复职位: {result.get('title', '')} - {result.get('company', '')}")
+                    continue
                 
-                conn.commit()
-                self.logger.debug(f"数据库已保存 {len(results)} 条记录")
-                return True
+                # 准备职位数据
+                job_data = {
+                    'job_id': job_id,
+                    'title': result.get('title', ''),
+                    'company': result.get('company', ''),
+                    'url': job_url,
+                    'job_fingerprint': job_fingerprint,
+                    'application_status': 'pending',
+                    'match_score': None,
+                    'website': result.get('source', 'qiancheng'),
+                    'created_at': datetime.now().isoformat(),
+                    'submitted_at': None
+                }
+                
+                # 保存到数据库
+                if db_manager.save_job(job_data):
+                    saved_count += 1
+                
+                # 保存详细信息到扩展表
+                self._save_job_details_with_fingerprint(result, job_id, job_fingerprint, keyword)
+            
+            self.logger.info(f"数据库保存完成: 新增 {saved_count} 条，跳过重复 {skipped_count} 条")
+            return True
                 
         except Exception as e:
             self.logger.error(f"保存到数据库失败: {e}")
@@ -230,14 +244,14 @@ class DataStorage:
     
     def _create_tables(self, conn: sqlite3.Connection) -> None:
         """
-        创建数据库表（基于CLAUDE.md中的定义）
+        创建数据库表（基于CLAUDE.md中的定义，包含job_fingerprint字段）
         
         Args:
             conn: 数据库连接
         """
         cursor = conn.cursor()
         
-        # 创建职位表（按照CLAUDE.md中的定义）
+        # 创建职位表（按照CLAUDE.md中的定义，包含指纹字段）
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -245,6 +259,7 @@ class DataStorage:
                 title VARCHAR(200) NOT NULL,
                 company VARCHAR(200) NOT NULL,
                 url VARCHAR(500) NOT NULL,
+                job_fingerprint VARCHAR(12) UNIQUE,
                 application_status VARCHAR(50) DEFAULT 'pending',
                 match_score FLOAT,
                 website VARCHAR(50) NOT NULL,
@@ -285,10 +300,11 @@ class DataStorage:
             )
         """)
         
-        # 创建索引
+        # 创建索引（包含指纹索引）
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_job_id ON jobs(job_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_website ON jobs(website)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_jobs_fingerprint ON jobs(job_fingerprint)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_details_job_id ON job_details(job_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_details_keyword ON job_details(keyword)")
         
@@ -633,3 +649,262 @@ class DataStorage:
         except Exception as e:
             self.logger.error(f"❌ 列出文件失败: {e}")
             return []
+    
+    def _save_job_details_with_fingerprint(self, result: Dict, job_id: str, job_fingerprint: str, keyword: str) -> bool:
+        """
+        保存职位详细信息（包含指纹）
+        
+        Args:
+            result: 职位详细信息
+            job_id: 职位ID
+            job_fingerprint: 职位指纹
+            keyword: 搜索关键词
+            
+        Returns:
+            是否保存成功
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # 插入或更新职位详细信息
+                cursor.execute("""
+                    INSERT OR REPLACE INTO job_details (
+                        job_id, salary, location, experience, education,
+                        description, requirements, benefits, publish_time,
+                        company_scale, industry, keyword, extracted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    job_id,
+                    result.get('salary', ''),
+                    result.get('location', ''),
+                    result.get('experience', ''),
+                    result.get('education', ''),
+                    result.get('description', ''),
+                    result.get('requirements', ''),
+                    result.get('benefits', ''),
+                    result.get('publish_time', ''),
+                    result.get('company_scale', ''),
+                    result.get('industry', ''),
+                    keyword,
+                    result.get('extracted_at', datetime.now().isoformat())
+                ))
+                
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"保存职位详细信息失败: {e}")
+            return False
+    
+    def save_job_detail(self, detail_data: Dict[str, Any], job_url: str) -> bool:
+        """
+        保存单个职位详情到数据库（替代JSON文件保存）
+        
+        Args:
+            detail_data: 职位详情数据
+            job_url: 职位URL
+            
+        Returns:
+            是否保存成功
+        """
+        try:
+            # 使用DatabaseManager
+            db_manager = DatabaseManager(self.db_path)
+            db_manager.init_database()
+            
+            # 生成job_id和指纹
+            job_id = self._generate_job_id(
+                job_url,
+                detail_data.get('title', ''),
+                detail_data.get('company', '')
+            )
+            
+            # 从详情数据中提取基本信息生成指纹
+            job_fingerprint = generate_job_fingerprint(
+                detail_data.get('title', ''),
+                detail_data.get('company', ''),
+                detail_data.get('salary', ''),
+                detail_data.get('location', '')
+            )
+            
+            # 检查是否已存在
+            if db_manager.fingerprint_exists(job_fingerprint):
+                self.logger.debug(f"职位详情已存在，跳过保存: {detail_data.get('title', '')}")
+                return True
+            
+            # 准备职位数据
+            job_data = {
+                'job_id': job_id,
+                'title': detail_data.get('title', ''),
+                'company': detail_data.get('company', ''),
+                'url': job_url,
+                'job_fingerprint': job_fingerprint,
+                'application_status': 'pending',
+                'match_score': None,
+                'website': 'qiancheng',
+                'created_at': datetime.now().isoformat(),
+                'submitted_at': None
+            }
+            
+            # 保存到数据库
+            success = db_manager.save_job(job_data)
+            
+            if success:
+                # 保存详细信息
+                self._save_job_details_with_fingerprint(detail_data, job_id, job_fingerprint, "detail_extraction")
+                self.logger.info(f"职位详情已保存到数据库: {detail_data.get('title', '')}")
+            
+            return success
+                
+        except Exception as e:
+            self.logger.error(f"保存职位详情失败: {e}")
+            return False
+    
+    def update_job_url(self, job_id: str, job_url: str) -> bool:
+        """
+        更新职位的URL
+        
+        Args:
+            job_id: 职位ID
+            job_url: 职位URL
+            
+        Returns:
+            是否更新成功
+        """
+        try:
+            db_manager = DatabaseManager(self.db_path)
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    UPDATE jobs
+                    SET url = ?
+                    WHERE job_id = ?
+                """, (job_url, job_id))
+                
+                conn.commit()
+                
+                if cursor.rowcount > 0:
+                    self.logger.debug(f"职位URL已更新: {job_id} -> {job_url}")
+                    return True
+                else:
+                    self.logger.warning(f"未找到职位进行URL更新: {job_id}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.error(f"更新职位URL失败: {e}")
+            return False
+    
+    def update_job_with_detail_url(self, title: str, company: str, detail_url: str) -> bool:
+        """
+        根据标题和公司名称更新职位的详情URL
+        
+        Args:
+            title: 职位标题
+            company: 公司名称
+            detail_url: 详情页URL
+            
+        Returns:
+            是否更新成功
+        """
+        try:
+            db_manager = DatabaseManager(self.db_path)
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # 查找匹配的职位记录
+                cursor.execute("""
+                    SELECT job_id FROM jobs
+                    WHERE title = ? AND company = ? AND (url = '' OR url IS NULL)
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """, (title, company))
+                
+                result = cursor.fetchone()
+                if result:
+                    job_id = result[0]
+                    
+                    # 更新URL
+                    cursor.execute("""
+                        UPDATE jobs
+                        SET url = ?
+                        WHERE job_id = ?
+                    """, (detail_url, job_id))
+                    
+                    conn.commit()
+                    
+                    if cursor.rowcount > 0:
+                        self.logger.info(f"职位URL已更新: {title} @ {company} -> {detail_url}")
+                        return True
+                
+                self.logger.warning(f"未找到匹配的职位记录: {title} @ {company}")
+                return False
+                    
+        except Exception as e:
+            self.logger.error(f"更新职位详情URL失败: {e}")
+            return False
+    
+    def check_job_fingerprint_exists(self, title: str, company: str, salary: str = "", location: str = "") -> bool:
+        """
+        检查职位指纹是否已存在
+        
+        Args:
+            title: 职位标题
+            company: 公司名称
+            salary: 薪资信息
+            location: 工作地点
+            
+        Returns:
+            是否已存在
+        """
+        try:
+            fingerprint = generate_job_fingerprint(title, company, salary, location)
+            db_manager = DatabaseManager(self.db_path)
+            return db_manager.fingerprint_exists(fingerprint)
+        except Exception as e:
+            self.logger.error(f"检查职位指纹失败: {e}")
+            return False
+    
+    def get_deduplication_stats(self) -> Dict[str, Any]:
+        """
+        获取去重统计信息
+        
+        Returns:
+            去重统计数据
+        """
+        try:
+            db_manager = DatabaseManager(self.db_path)
+            
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # 总职位数
+                cursor.execute("SELECT COUNT(*) FROM jobs")
+                total_jobs = cursor.fetchone()[0]
+                
+                # 有指纹的职位数
+                cursor.execute("SELECT COUNT(*) FROM jobs WHERE job_fingerprint IS NOT NULL")
+                jobs_with_fingerprint = cursor.fetchone()[0]
+                
+                # 唯一指纹数
+                cursor.execute("SELECT COUNT(DISTINCT job_fingerprint) FROM jobs WHERE job_fingerprint IS NOT NULL")
+                unique_fingerprints = cursor.fetchone()[0]
+                
+                # 重复职位数
+                duplicate_count = db_manager.get_duplicate_jobs_count()
+                
+                return {
+                    'total_jobs': total_jobs,
+                    'jobs_with_fingerprint': jobs_with_fingerprint,
+                    'unique_fingerprints': unique_fingerprints,
+                    'duplicate_jobs': duplicate_count,
+                    'deduplication_rate': (duplicate_count / max(total_jobs, 1)) * 100,
+                    'generated_at': datetime.now().isoformat()
+                }
+                
+        except Exception as e:
+            self.logger.error(f"获取去重统计失败: {e}")
+            return {}

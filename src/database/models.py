@@ -12,11 +12,12 @@ from dataclasses import dataclass
 
 @dataclass
 class JobRecord:
-    """职位记录数据模型"""
+    """职位记录数据模型（包含指纹字段）"""
     job_id: str
     title: str
     company: str
     url: str
+    job_fingerprint: Optional[str] = None
     application_status: str = 'pending'
     match_score: Optional[float] = None
     website: str = ''
@@ -30,6 +31,7 @@ class JobRecord:
             'title': self.title,
             'company': self.company,
             'url': self.url,
+            'job_fingerprint': self.job_fingerprint,
             'application_status': self.application_status,
             'match_score': self.match_score,
             'website': self.website,
@@ -53,6 +55,7 @@ class JobRecord:
             title=data['title'],
             company=data['company'],
             url=data['url'],
+            job_fingerprint=data.get('job_fingerprint'),
             application_status=data.get('application_status', 'pending'),
             match_score=data.get('match_score'),
             website=data.get('website', ''),
@@ -64,7 +67,7 @@ class JobRecord:
 class DatabaseSchema:
     """数据库表结构定义"""
     
-    # 职位信息表
+    # 职位信息表（扩展RAG支持）
     JOBS_TABLE = """
     CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,11 +75,39 @@ class DatabaseSchema:
         title VARCHAR(200) NOT NULL,
         company VARCHAR(200) NOT NULL,
         url VARCHAR(500) NOT NULL,
+        job_fingerprint VARCHAR(12) UNIQUE,
         application_status VARCHAR(50) DEFAULT 'pending',
         match_score FLOAT,
+        semantic_score FLOAT,
+        vector_id VARCHAR(100),
+        structured_data TEXT,
         website VARCHAR(50) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        submitted_at TIMESTAMP
+        submitted_at TIMESTAMP,
+        rag_processed BOOLEAN DEFAULT FALSE,
+        rag_processed_at TIMESTAMP,
+        vector_doc_count INTEGER DEFAULT 0
+    )
+    """
+    
+    # 职位详细信息表
+    JOB_DETAILS_TABLE = """
+    CREATE TABLE IF NOT EXISTS job_details (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id VARCHAR(100) NOT NULL,
+        salary TEXT,
+        location TEXT,
+        experience TEXT,
+        education TEXT,
+        description TEXT,
+        requirements TEXT,
+        benefits TEXT,
+        publish_time TEXT,
+        company_scale TEXT,
+        industry TEXT,
+        keyword TEXT,
+        extracted_at TEXT,
+        FOREIGN KEY (job_id) REFERENCES jobs (job_id)
     )
     """
     
@@ -91,12 +122,19 @@ class DatabaseSchema:
     )
     """
     
-    # 创建索引
+    # 创建索引（包含RAG相关索引）
     INDEXES = [
         "CREATE INDEX IF NOT EXISTS idx_jobs_job_id ON jobs(job_id)",
+        "CREATE INDEX IF NOT EXISTS idx_jobs_fingerprint ON jobs(job_fingerprint)",
         "CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(application_status)",
         "CREATE INDEX IF NOT EXISTS idx_jobs_website ON jobs(website)",
         "CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_jobs_rag_processed ON jobs(rag_processed)",
+        "CREATE INDEX IF NOT EXISTS idx_jobs_rag_processed_at ON jobs(rag_processed_at)",
+        "CREATE INDEX IF NOT EXISTS idx_jobs_vector_id ON jobs(vector_id)",
+        "CREATE INDEX IF NOT EXISTS idx_jobs_semantic_score ON jobs(semantic_score)",
+        "CREATE INDEX IF NOT EXISTS idx_job_details_job_id ON job_details(job_id)",
+        "CREATE INDEX IF NOT EXISTS idx_job_details_keyword ON job_details(keyword)",
         "CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)",
         "CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level)"
     ]
@@ -106,6 +144,7 @@ class DatabaseSchema:
         """获取所有表的创建语句"""
         return [
             cls.JOBS_TABLE,
+            cls.JOB_DETAILS_TABLE,
             cls.LOGS_TABLE
         ]
     

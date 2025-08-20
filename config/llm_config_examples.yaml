@@ -1,0 +1,145 @@
+# LLM配置示例文件
+# 展示如何配置不同的语言模型
+
+# 智谱GLM配置（推荐用于中文场景）
+zhipu_config:
+  llm:
+    provider: "zhipu"
+    api_key: "0175134f27a040709d7541e14b4db353.V3KP9u8rZ0oQj9s9"
+    model: "glm-4-flash"
+    temperature: 0.1
+    max_tokens: 2000
+  vectorstore:
+    persist_directory: "./chroma_db"
+    collection_name: "job_positions"
+  embeddings:
+    model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    device: "cpu"
+    normalize_embeddings: true
+
+# Ollama本地模型配置（适合离线使用）
+ollama_llama2_config:
+  llm:
+    provider: "ollama"
+    model: "llama2"
+    base_url: "http://localhost:11434"
+    temperature: 0.1
+    max_tokens: 2000
+  vectorstore:
+    persist_directory: "./chroma_db"
+    collection_name: "job_positions"
+  embeddings:
+    model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    device: "cpu"
+
+# Ollama中文模型配置
+ollama_qwen_config:
+  llm:
+    provider: "ollama"
+    model: "qwen:7b"  # 通义千问7B模型
+    base_url: "http://localhost:11434"
+    temperature: 0.1
+    max_tokens: 2000
+  vectorstore:
+    persist_directory: "./chroma_db"
+    collection_name: "job_positions"
+
+# OpenAI配置
+openai_config:
+  llm:
+    provider: "openai"
+    api_key: "your_openai_api_key_here"
+    model: "gpt-3.5-turbo"
+    temperature: 0.1
+    max_tokens: 2000
+  vectorstore:
+    persist_directory: "./chroma_db"
+    collection_name: "job_positions"
+
+# OpenAI GPT-4配置（更强但更贵）
+openai_gpt4_config:
+  llm:
+    provider: "openai"
+    api_key: "your_openai_api_key_here"
+    model: "gpt-4"
+    temperature: 0.1
+    max_tokens: 2000
+  vectorstore:
+    persist_directory: "./chroma_db"
+    collection_name: "job_positions"
+
+# Claude配置
+claude_config:
+  llm:
+    provider: "claude"
+    api_key: "your_claude_api_key_here"
+    model: "claude-3-sonnet-20240229"
+    temperature: 0.1
+    max_tokens: 2000
+  vectorstore:
+    persist_directory: "./chroma_db"
+    collection_name: "job_positions"
+
+# 开发环境配置（使用免费的智谱GLM）
+development_config:
+  llm:
+    provider: "zhipu"
+    api_key: "your_zhipu_api_key_here"
+    model: "glm-4-flash"
+    temperature: 0.1
+    max_tokens: 1000  # 开发时使用较少token
+  vectorstore:
+    persist_directory: "./dev_chroma_db"
+    collection_name: "dev_job_positions"
+
+# 生产环境配置（使用更稳定的模型）
+production_config:
+  llm:
+    provider: "zhipu"  # 或者 "openai"
+    api_key: "your_production_api_key_here"
+    model: "glm-4-flash"  # 或者 "gpt-3.5-turbo"
+    temperature: 0.05  # 生产环境使用更低的温度
+    max_tokens: 2000
+  vectorstore:
+    persist_directory: "./prod_chroma_db"
+    collection_name: "prod_job_positions"
+  embeddings:
+    model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    device: "cpu"
+    normalize_embeddings: true
+
+# 高性能配置（使用GPU加速）
+high_performance_config:
+  llm:
+    provider: "ollama"
+    model: "llama2:13b"  # 使用更大的模型
+    base_url: "http://localhost:11434"
+    temperature: 0.1
+    max_tokens: 4000
+  vectorstore:
+    persist_directory: "./hp_chroma_db"
+    collection_name: "hp_job_positions"
+  embeddings:
+    model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    device: "cuda"  # 使用GPU加速
+    normalize_embeddings: true
+
+# 多语言配置（适合处理中英文混合内容）
+multilingual_config:
+  llm:
+    provider: "zhipu"
+    api_key: "your_zhipu_api_key_here"
+    model: "glm-4-flash"
+    temperature: 0.1
+    max_tokens: 2000
+  vectorstore:
+    persist_directory: "./ml_chroma_db"
+    collection_name: "multilingual_job_positions"
+  embeddings:
+    model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    device: "cpu"
+    normalize_embeddings: true
+  text_splitter:
+    chunk_size: 500
+    chunk_overlap: 50
+    separators: ["\n岗位职责：", "\n人员要求：", "\n任职要求：", "\nJob Responsibilities:", "\nRequirements:", "\n\n", "\n", "。", ".", " "]

@@ -1005,3 +1005,956 @@ with ContentExtractor(config) as extractor:
 - **技能评估**: 评估个人技能与市场需求的匹配度
 - **职业规划**: 基于数据分析的职业发展建议
 - **批量处理**: 高效处理大量职位信息的结构化分析
+
+## 🔄 智能去重系统设计 (2025-01-20)
+
+### 📋 职位指纹去重系统
+
+为了减少重复爬取和提高爬取效率，系统引入了基于职位基本信息的智能去重机制。
+
+#### 🎯 设计原理
+
+**核心思路**: 在列表页就能判断职位是否已爬取，避免不必要的详情页访问
+
+```mermaid
+graph TD
+    A[解析列表页职位] --> B[生成职位指纹]
+    B --> C{检查指纹是否存在}
+    C -->|存在| D[跳过该职位]
+    C -->|不存在| E[点击获取详情URL]
+    E --> F[爬取详情页内容]
+    F --> G[保存到数据库]
+    G --> H[记录职位指纹]
+    
+    style D fill:#ffcccc
+    style E fill:#ccffcc
+```
+
+#### 🔧 职位指纹算法
+
+```python
+def generate_job_fingerprint(title: str, company: str, salary: str = "", location: str = "") -> str:
+    """
+    基于列表页可获取的信息生成职位指纹
+    
+    Args:
+        title: 职位标题
+        company: 公司名称
+        salary: 薪资信息（可选）
+        location: 工作地点（可选）
+        
+    Returns:
+        12位MD5哈希指纹
+    """
+    import hashlib
+    
+    # 标准化处理
+    title_clean = title.strip().lower().replace(' ', '')
+    company_clean = company.strip().lower().replace(' ', '')
+    salary_clean = salary.strip() if salary else ""
+    location_clean = location.strip() if location else ""
+    
+    # 生成指纹
+    fingerprint_data = f"{title_clean}|{company_clean}|{salary_clean}|{location_clean}"
+    return hashlib.md5(fingerprint_data.encode('utf-8')).hexdigest()[:12]
+```
+
+#### 🗄️ 数据库表结构扩展
+
+```sql
+-- 在jobs表中添加job_fingerprint字段和RAG处理状态字段
+ALTER TABLE jobs ADD COLUMN job_fingerprint VARCHAR(12) UNIQUE;
+ALTER TABLE jobs ADD COLUMN rag_processed BOOLEAN DEFAULT FALSE;
+ALTER TABLE jobs ADD COLUMN rag_processed_at TIMESTAMP;
+ALTER TABLE jobs ADD COLUMN vector_doc_count INTEGER DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS idx_jobs_fingerprint ON jobs(job_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_jobs_rag_processed ON jobs(rag_processed);
+CREATE INDEX IF NOT EXISTS idx_jobs_rag_processed_at ON jobs(rag_processed_at);
+
+-- 更新后的jobs表结构
+CREATE TABLE jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id VARCHAR(100) UNIQUE NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    company VARCHAR(200) NOT NULL,
+    url VARCHAR(500) NOT NULL,
+    job_fingerprint VARCHAR(12) UNIQUE,  -- 职位指纹（去重用）
+    application_status VARCHAR(50) DEFAULT 'pending',
+    match_score FLOAT,
+    semantic_score FLOAT,
+    vector_id VARCHAR(100),
+    structured_data TEXT,
+    website VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    submitted_at TIMESTAMP,
+    rag_processed BOOLEAN DEFAULT FALSE,  -- RAG处理状态
+    rag_processed_at TIMESTAMP,          -- RAG处理时间
+    vector_doc_count INTEGER DEFAULT 0   -- 生成的向量文档数量
+);
+```
+
+#### 🔄 爬取流程优化
+
+**优化前流程**:
+1. 解析列表页 → 2. 逐个点击职位 → 3. 爬取详情页 → 4. 保存数据
+
+**优化后流程**:
+1. 解析列表页 → 2. 生成职位指纹 → 3. 检查是否已存在 → 4. 仅爬取新职位
+
+#### 📊 性能提升预期
+
+- **重复检测准确率**: >95% (基于标题+公司的组合唯一性)
+- **爬取效率提升**: 50-80% (跳过重复职位的详情页访问)
+- **数据库查询性能**: <1ms (基于索引的指纹查询)
+- **存储空间节省**: 避免重复数据存储
+
+#### 🛠️ 实施计划
+
+**阶段1: 数据库模式更新**
+- 更新 `models.py` 添加 `job_fingerprint` 字段
+- 创建数据库迁移脚本
+- 添加指纹相关的数据库操作方法
+
+**阶段2: 指纹生成集成**
+- 在 `PageParser._parse_job_element()` 中集成指纹生成
+- 在 `ContentExtractor` 中添加去重检查逻辑
+- 实现指纹存储和查询接口
+
+**阶段3: 存储方式改造**
+- 将JSON文件保存改为直接数据库存储
+- 优化数据库批量插入性能
+- 添加数据完整性检查
+
+**阶段4: 测试验证**
+- 创建去重功能测试用例
+- 验证指纹算法的准确性
+- 性能基准测试
+
+#### 💡 技术特性
+
+**智能指纹生成**:
+- 基于核心信息（标题+公司）确保唯一性
+- 标准化处理避免格式差异影响
+- 12位哈希长度平衡存储和冲突率
+
+**高效去重检查**:
+- 列表页即可判断，避免不必要的点击
+- 数据库索引优化，毫秒级查询
+- 批量检查支持，提升处理效率
+
+**数据一致性**:
+- 唯一约束确保指纹不重复
+- 事务处理保证数据完整性
+- 错误恢复机制处理异常情况
+
+#### 🎯 配置示例
+
+```yaml
+# 去重系统配置
+deduplication:
+  enabled: true
+  fingerprint_algorithm: "md5"
+  fingerprint_length: 12
+  check_batch_size: 100
+  
+  # 指纹生成配置
+  fingerprint_fields:
+    title: true          # 职位标题（必需）
+    company: true        # 公司名称（必需）
+    salary: true         # 薪资信息（可选）
+    location: true       # 工作地点（可选）
+  
+  # 标准化配置
+  normalization:
+    lowercase: true      # 转换为小写
+    remove_spaces: true  # 移除空格
+    remove_punctuation: false  # 保留标点符号
+```
+
+#### 📈 预期效果
+
+**效率提升**:
+- 减少50-80%的重复详情页访问
+- 降低网络请求和页面加载时间
+- 提升整体爬取速度
+
+**数据质量**:
+- 避免重复数据存储
+- 保持数据库整洁
+- 提升后续分析准确性
+
+**系统稳定性**:
+- 减少不必要的网络请求
+- 降低被反爬检测的风险
+- 提升系统整体稳定性
+
+#### 🔍 使用示例
+
+```python
+# 在ContentExtractor中的使用
+class ContentExtractor:
+    def _process_job_list(self, job_elements):
+        """处理职位列表，集成去重检查"""
+        new_jobs = []
+        skipped_count = 0
+        
+        for job_element in job_elements:
+            # 解析基本信息
+            job_data = self.page_parser._parse_job_element(job_element)
+            
+            # 生成指纹
+            fingerprint = generate_job_fingerprint(
+                job_data['title'],
+                job_data['company'],
+                job_data.get('salary', ''),
+                job_data.get('location', '')
+            )
+            
+            # 检查是否已存在
+            if self.data_storage.fingerprint_exists(fingerprint):
+                skipped_count += 1
+                self.logger.info(f"跳过重复职位: {job_data['title']} - {job_data['company']}")
+                continue
+            
+            # 添加指纹信息
+            job_data['job_fingerprint'] = fingerprint
+            new_jobs.append(job_data)
+        
+        self.logger.info(f"去重结果: 新职位 {len(new_jobs)} 个，跳过重复 {skipped_count} 个")
+        return new_jobs
+```
+
+这个智能去重系统将显著提升爬取效率，减少重复工作，同时保持数据质量和系统稳定性。
+
+## 🤖 RAG系统数据抽取分析与实现方案 (2025-01-20)
+
+### 📊 数据库结构分析
+
+基于现有代码分析，当前系统具备完整的数据存储基础：
+
+#### 主要数据表结构
+
+**jobs表** - 存储职位基本信息：
+```sql
+CREATE TABLE jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id VARCHAR(100) UNIQUE NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    company VARCHAR(200) NOT NULL,
+    url VARCHAR(500) NOT NULL,
+    job_fingerprint VARCHAR(12) UNIQUE,
+    application_status VARCHAR(50) DEFAULT 'pending',
+    match_score FLOAT,
+    website VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    submitted_at TIMESTAMP
+)
+```
+
+**job_details表** - 存储职位详细信息：
+```sql
+CREATE TABLE job_details (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id VARCHAR(100) NOT NULL,
+    salary TEXT,
+    location TEXT,
+    experience TEXT,
+    education TEXT,
+    description TEXT,        -- 职位描述（RAG核心数据）
+    requirements TEXT,       -- 职位要求（RAG核心数据）
+    benefits TEXT,
+    publish_time TEXT,
+    company_scale TEXT,
+    industry TEXT,
+    keyword TEXT,
+    extracted_at TEXT,
+    FOREIGN KEY (job_id) REFERENCES jobs (job_id)
+)
+```
+
+#### 数据完整性评估
+
+✅ **数据源确认**：
+- 数据库中包含少量测试职位数据
+- 包含完整的职位描述和要求信息
+- 具备之前JSON文件需要的所有信息字段
+- 数据结构适合RAG系统处理
+
+### 🏗️ RAG系统架构设计
+
+#### 系统组件架构图
+
+```mermaid
+graph TB
+    subgraph "数据层"
+        DB[(SQLite数据库)]
+        VDB[(ChromaDB向量数据库)]
+    end
+    
+    subgraph "数据抽取层"
+        DBReader[数据库读取器]
+        DataProcessor[数据处理器]
+        VectorImporter[向量导入器]
+    end
+    
+    subgraph "RAG核心层"
+        RAGCoordinator[RAG协调器]
+        JobProcessor[职位处理器]
+        VectorManager[向量管理器]
+        DocumentCreator[文档创建器]
+    end
+    
+    subgraph "应用层"
+        JobMatcher[职位匹配器]
+        ResumeOptimizer[简历优化器]
+        JobQA[职位问答系统]
+    end
+    
+    subgraph "接口层"
+        API[统一API接口]
+        CLI[命令行接口]
+    end
+    
+    DB --> DBReader
+    DBReader --> DataProcessor
+    DataProcessor --> VectorImporter
+    VectorImporter --> VDB
+    
+    VDB --> RAGCoordinator
+    RAGCoordinator --> JobProcessor
+    RAGCoordinator --> VectorManager
+    RAGCoordinator --> DocumentCreator
+    
+    RAGCoordinator --> JobMatcher
+    RAGCoordinator --> ResumeOptimizer
+    RAGCoordinator --> JobQA
+    
+    JobMatcher --> API
+    ResumeOptimizer --> API
+    JobQA --> API
+    API --> CLI
+```
+
+### 🔧 核心组件设计
+
+#### 1. 数据库职位读取器 (DatabaseJobReader)
+
+**功能职责**：
+- 从SQLite数据库读取职位数据
+- 支持批量读取和增量更新
+- 数据预处理和清洗
+- 合并主表和详情表数据
+
+**接口设计**：
+```python
+class DatabaseJobReader:
+    """数据库职位数据读取器"""
+    
+    def __init__(self, db_path: str, config: Dict = None):
+        self.db_manager = DatabaseManager(db_path)
+        self.config = config or {}
+    
+    def read_all_jobs(self) -> List[Dict]:
+        """读取所有职位数据"""
+        
+    def read_jobs_by_batch(self, batch_size: int = 100) -> Iterator[List[Dict]]:
+        """批量读取职位数据"""
+        
+    def read_new_jobs(self, since: datetime) -> List[Dict]:
+        """读取指定时间后的新职位"""
+        
+    def get_job_with_details(self, job_id: str) -> Optional[Dict]:
+        """获取包含详细信息的完整职位数据"""
+        
+    def get_jobs_for_rag_processing(self, limit: int = None) -> List[Dict]:
+        """获取需要RAG处理的职位数据（未处理的职位）"""
+        
+    def get_unprocessed_jobs(self, batch_size: int = 100) -> Iterator[List[Dict]]:
+        """批量获取未进行RAG处理的职位"""
+        
+    def mark_job_as_processed(self, job_id: str, doc_count: int = 0) -> bool:
+        """标记职位为已RAG处理"""
+        
+    def get_rag_processing_stats(self) -> Dict[str, int]:
+        """获取RAG处理统计信息"""
+        
+    def reset_rag_processing_status(self, job_ids: List[str] = None) -> int:
+        """重置RAG处理状态（用于重新处理）"""
+```
+
+#### 优化的JobProcessor设计
+
+**核心思路**：
+- 数据库中的基本字段（title、company、location、experience、education等）直接映射
+- 使用LLM处理需要智能解析的字段：description → responsibilities、requirements、skills + salary → salary_min、salary_max
+- 平衡处理效率和准确性
+
+**优化后的JobProcessor**：
+```python
+class OptimizedJobProcessor:
+    """优化的职位处理器 - 混合处理模式"""
+    
+    def __init__(self, llm_config: Dict = None, config: Dict = None):
+        self.config = config or {}
+        self.llm_config = llm_config or {}
+        
+        # 初始化LLM
+        provider = self.llm_config.get('provider', 'zhipu')
+        self.llm = create_llm(
+            provider=provider,
+            model=self.llm_config.get('model', 'glm-4-flash'),
+            temperature=self.llm_config.get('temperature', 0.1),
+            max_tokens=self.llm_config.get('max_tokens', 1500),
+            **{k: v for k, v in self.llm_config.items() if k not in ['provider', 'model', 'temperature', 'max_tokens']}
+        )
+        
+        # 构建智能提取链
+        self.smart_extraction_chain = self._build_smart_extraction_chain()
+        
+        logger.info(f"优化职位处理器初始化完成，使用提供商: {provider}")
+    
+    def _build_smart_extraction_chain(self):
+        """构建智能提取链 - 处理description和salary"""
+        
+        prompt_template = """
+你是专业的HR数据分析师。请分析以下职位信息，提取岗位职责、人员要求、技能要求和薪资信息。
+
+职位信息：
+标题：{job_title}
+公司：{company}
+薪资：{salary_text}
+职位描述：{description_text}
+职位要求：{requirements_text}
+
+请严格按照以下JSON格式输出，不要包含任何其他内容：
+
+{{
+    "responsibilities": ["职责1", "职责2", "职责3"],
+    "requirements": ["要求1", "要求2", "要求3"],
+    "skills": ["技能1", "技能2", "技能3"],
+    "salary_min": 最低薪资数字或null,
+    "salary_max": 最高薪资数字或null
+}}
+
+提取要求：
+1. 从职位描述中提取岗位职责到responsibilities数组
+2. 从职位要求中提取人员要求到requirements数组
+3. 识别所有技术技能、工具、编程语言等到skills数组
+4. 从薪资文本中提取数字范围：
+   - "10k-15k" → salary_min: 10000, salary_max: 15000
+   - "面议" → salary_min: null, salary_max: null
+   - "15000以上" → salary_min: 15000, salary_max: null
+   - "8000-12000元/月" → salary_min: 8000, salary_max: 12000
+5. 每个数组包含3-8个具体明确的条目
+6. 只输出JSON，不要其他解释文字
+
+JSON输出：
+"""
+        
+        prompt = PromptTemplate(
+            template=prompt_template,
+            input_variables=["job_title", "company", "salary_text", "description_text", "requirements_text"]
+        )
+        
+        return prompt | self.llm | StrOutputParser()
+    
+    async def process_database_job(self, db_record: Dict) -> JobStructure:
+        """
+        处理数据库职位记录 - 混合处理模式
+        
+        Args:
+            db_record: 数据库记录（包含jobs和job_details的合并数据）
+            
+        Returns:
+            JobStructure: 结构化的职位信息
+        """
+        try:
+            # 1. 直接映射基本字段（无需LLM处理）
+            job_data = {
+                'job_title': db_record.get('title', ''),
+                'company': db_record.get('company', ''),
+                'location': db_record.get('location', ''),
+                'education': db_record.get('education', '不限'),
+                'experience': db_record.get('experience', '不限'),
+                'company_size': db_record.get('company_scale', ''),
+            }
+            
+            # 2. 使用LLM处理需要智能解析的字段
+            llm_result = await self.smart_extraction_chain.ainvoke({
+                "job_title": db_record.get('title', ''),
+                "company": db_record.get('company', ''),
+                "salary_text": db_record.get('salary', ''),
+                "description_text": db_record.get('description', ''),
+                "requirements_text": db_record.get('requirements', '')
+            })
+            
+            # 3. 解析LLM结果并合并
+            extracted_data = self._parse_llm_result(llm_result)
+            job_data.update(extracted_data)
+            
+            # 4. 创建JobStructure对象
+            job_structure = JobStructure(**job_data)
+            
+            logger.info(f"成功处理职位: {job_structure.job_title} - {job_structure.company}")
+            return job_structure
+            
+        except Exception as e:
+            logger.error(f"处理职位失败，使用备用方案: {e}")
+            return self._fallback_extraction_from_db(db_record)
+    
+    def _parse_llm_result(self, llm_result: str) -> Dict:
+        """解析LLM返回的结果"""
+        try:
+            # 清理结果字符串
+            cleaned_result = llm_result.strip()
+            
+            # 提取JSON部分
+            if "```json" in cleaned_result:
+                start = cleaned_result.find("```json") + 7
+                end = cleaned_result.find("```", start)
+                if end != -1:
+                    cleaned_result = cleaned_result[start:end].strip()
+            elif "```" in cleaned_result:
+                start = cleaned_result.find("```") + 3
+                end = cleaned_result.find("```", start)
+                if end != -1:
+                    cleaned_result = cleaned_result[start:end].strip()
+            
+            # 解析JSON
+            parsed = json.loads(cleaned_result)
+            
+            # 验证和清理字段
+            result = {
+                'responsibilities': parsed.get('responsibilities', []),
+                'requirements': parsed.get('requirements', []),
+                'skills': parsed.get('skills', []),
+                'salary_min': parsed.get('salary_min'),
+                'salary_max': parsed.get('salary_max')
+            }
+            
+            # 确保列表字段都是列表
+            for key in ['responsibilities', 'requirements', 'skills']:
+                if not isinstance(result[key], list):
+                    result[key] = []
+            
+            # 确保薪资字段是数字或None
+            for key in ['salary_min', 'salary_max']:
+                if result[key] is not None:
+                    try:
+                        result[key] = int(result[key])
+                    except (ValueError, TypeError):
+                        result[key] = None
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"LLM结果解析失败: {e}")
+            return {
+                'responsibilities': [],
+                'requirements': [],
+                'skills': [],
+                'salary_min': None,
+                'salary_max': None
+            }
+    
+    def _fallback_extraction_from_db(self, db_record: Dict) -> JobStructure:
+        """从数据库记录的备用提取方案"""
+        return JobStructure(
+            job_title=db_record.get('title', '未知职位'),
+            company=db_record.get('company', '未知公司'),
+            location=db_record.get('location'),
+            education=db_record.get('education', '不限'),
+            experience=db_record.get('experience', '不限'),
+            company_size=db_record.get('company_scale'),
+            responsibilities=[],
+            requirements=[],
+            skills=[],
+            salary_min=None,
+            salary_max=None
+        )
+```
+
+#### 处理字段分类
+
+**直接映射字段**（无需LLM）：
+- `title` → `job_title`
+- `company` → `company`
+- `location` → `location`
+- `education` → `education`
+- `experience` → `experience`
+- `company_scale` → `company_size`
+
+**LLM智能处理字段**：
+- `description` + `requirements` → `responsibilities`、`requirements`、`skills`
+- `salary` → `salary_min`、`salary_max`
+
+**性能优化效果**：
+- **减少LLM处理字段**：从11个字段减少到5个字段
+- **提升处理准确性**：基本信息直接映射，避免LLM解析错误
+- **保持智能解析**：复杂字段（职责、技能、薪资）仍使用LLM处理
+- **降低成本**：减少约50%的LLM token消耗
+
+#### 2. RAG系统协调器 (RAGSystemCoordinator)
+
+**功能职责**：
+- 统一管理RAG系统各组件
+- 协调数据流和处理流程
+- 提供统一的API接口
+- 管理系统配置和状态
+
+**接口设计**：
+```python
+class RAGSystemCoordinator:
+    """RAG系统协调器"""
+    
+    def __init__(self, config: Dict):
+        self.config = config
+        self.db_reader = DatabaseJobReader(config['database']['path'])
+        self.job_processor = LangChainJobProcessor(config['llm'])
+        self.vector_manager = ChromaDBManager(config['vector_db'])
+        self.document_creator = DocumentCreator(config.get('documents', {}))
+    
+    def initialize_system(self) -> bool:
+        """初始化RAG系统"""
+        
+    def import_database_jobs(self, batch_size: int = 100, force_reprocess: bool = False) -> Dict[str, int]:
+        """从数据库导入职位数据到向量数据库"""
+        
+    def process_single_job(self, job_data: Dict) -> bool:
+        """处理单个职位数据"""
+        
+    def get_processing_progress(self) -> Dict[str, Any]:
+        """获取RAG处理进度"""
+        
+    def resume_processing(self, batch_size: int = 100) -> Dict[str, int]:
+        """恢复中断的RAG处理"""
+        
+    def match_jobs(self, resume: Dict, top_k: int = 10) -> List[Dict]:
+        """智能职位匹配"""
+        
+    def optimize_resume(self, resume: Dict, target_jobs: List[str]) -> Dict:
+        """简历优化建议"""
+        
+    def query_jobs(self, question: str, filters: Dict = None) -> str:
+        """职位智能问答"""
+        
+    def get_system_status(self) -> Dict:
+        """获取系统状态"""
+```
+
+#### 3. 智能应用组件
+
+**职位匹配器 (IntelligentJobMatcher)**：
+```python
+class IntelligentJobMatcher:
+    """智能职位匹配器"""
+    
+    def __init__(self, vector_manager: ChromaDBManager, config: Dict):
+        self.vector_manager = vector_manager
+        self.config = config
+    
+    def match_by_skills(self, skills: List[str], top_k: int = 10) -> List[Dict]:
+        """基于技能匹配职位"""
+        
+    def match_by_experience(self, experience: str, top_k: int = 10) -> List[Dict]:
+        """基于经验匹配职位"""
+        
+    def comprehensive_match(self, user_profile: Dict, top_k: int = 10) -> List[Dict]:
+        """综合匹配分析"""
+        
+    def explain_match(self, job_id: str, user_profile: Dict) -> Dict:
+        """解释匹配原因"""
+```
+
+**简历优化器 (ResumeOptimizer)**：
+```python
+class ResumeOptimizer:
+    """简历优化器"""
+    
+    def __init__(self, rag_coordinator: RAGSystemCoordinator):
+        self.rag_coordinator = rag_coordinator
+    
+    def analyze_resume_gaps(self, resume: Dict, target_jobs: List[str]) -> Dict:
+        """分析简历与目标职位的差距"""
+        
+    def suggest_skill_improvements(self, resume: Dict, market_data: Dict) -> List[str]:
+        """建议技能提升方向"""
+        
+    def optimize_resume_content(self, resume: Dict, target_job: str) -> Dict:
+        """优化简历内容"""
+        
+    def generate_cover_letter(self, resume: Dict, job_id: str) -> str:
+        """生成求职信"""
+```
+
+**职位问答系统 (JobQASystem)**：
+```python
+class JobQASystem:
+    """职位智能问答系统"""
+    
+    def __init__(self, rag_coordinator: RAGSystemCoordinator):
+        self.rag_coordinator = rag_coordinator
+        self.qa_chain = self._build_qa_chain()
+    
+    def ask_about_job(self, job_id: str, question: str) -> str:
+        """询问特定职位信息"""
+        
+    def ask_about_market(self, question: str, filters: Dict = None) -> str:
+        """询问市场趋势信息"""
+        
+    def compare_jobs(self, job_ids: List[str], criteria: str) -> str:
+        """比较多个职位"""
+        
+    def get_job_insights(self, job_id: str) -> Dict:
+        """获取职位深度洞察"""
+```
+
+### 📋 数据抽取流程设计
+
+#### 数据抽取步骤
+
+```mermaid
+graph TD
+    A[读取数据库数据] --> B[数据预处理]
+    B --> C[合并主表和详情表]
+    C --> D[数据清洗和验证]
+    D --> E[结构化处理]
+    E --> F[创建文档对象]
+    F --> G[向量化处理]
+    G --> H[存储到ChromaDB]
+    H --> I[更新处理状态]
+    
+    style A fill:#e1f5fe
+    style E fill:#f3e5f5
+    style G fill:#e8f5e8
+    style H fill:#fff3e0
+```
+
+#### 数据处理流水线
+
+```python
+async def extract_and_import_jobs(coordinator: RAGSystemCoordinator, batch_size: int = 50, force_reprocess: bool = False):
+    """数据抽取和导入流水线（支持增量处理）"""
+    
+    # 1. 获取处理统计
+    db_reader = coordinator.db_reader
+    stats = db_reader.get_rag_processing_stats()
+    logger.info(f"RAG处理统计: 总计 {stats['total']} 个职位，已处理 {stats['processed']} 个，待处理 {stats['unprocessed']} 个")
+    
+    total_imported = 0
+    total_skipped = 0
+    total_errors = 0
+    
+    # 2. 批量处理未处理的职位
+    batch_iterator = db_reader.get_unprocessed_jobs(batch_size) if not force_reprocess else db_reader.read_jobs_by_batch(batch_size)
+    
+    for batch in batch_iterator:
+        batch_results = []
+        
+        for job_data in batch:
+            try:
+                # 3. 检查是否需要跳过（非强制重处理模式）
+                if not force_reprocess and job_data.get('rag_processed'):
+                    total_skipped += 1
+                    continue
+                
+                # 4. 结构化处理
+                job_structure = await coordinator.job_processor.process_job_data(job_data)
+                
+                # 5. 创建文档
+                documents = coordinator.document_creator.create_job_documents(
+                    job_structure,
+                    job_data['job_id'],
+                    job_data.get('url')
+                )
+                
+                # 6. 向量化存储
+                doc_ids = coordinator.vector_manager.add_job_documents(
+                    documents,
+                    job_data['job_id']
+                )
+                
+                # 7. 更新处理状态（记录文档数量）
+                coordinator.db_reader.mark_job_as_processed(job_data['job_id'], len(documents))
+                
+                batch_results.append({
+                    'job_id': job_data['job_id'],
+                    'title': job_data['title'],
+                    'documents_created': len(documents),
+                    'doc_ids': doc_ids
+                })
+                
+                total_imported += 1
+                
+            except Exception as e:
+                logger.error(f"处理职位失败 {job_data.get('job_id', 'unknown')}: {e}")
+                total_errors += 1
+                continue
+        
+        # 批量完成日志
+        logger.info(f"批量处理完成: 导入 {len(batch_results)} 个职位")
+        
+        # 如果没有更多未处理的职位，退出循环
+        if not batch_results and not force_reprocess:
+            logger.info("所有职位已处理完成")
+            break
+    
+    # 最终统计
+    final_stats = db_reader.get_rag_processing_stats()
+    
+    return {
+        'total_imported': total_imported,
+        'total_skipped': total_skipped,
+        'total_errors': total_errors,
+        'success_rate': total_imported / (total_imported + total_errors) if (total_imported + total_errors) > 0 else 0,
+        'processing_stats': final_stats
+    }
+```
+
+### ⚙️ 配置管理设计
+
+#### RAG系统配置结构
+
+```yaml
+# RAG系统配置 (config/config.yaml 扩展)
+rag_system:
+  # 数据库配置
+  database:
+    path: "./data/jobs.db"
+    batch_size: 100
+    enable_incremental: true
+    
+  # RAG处理配置
+  processing:
+    skip_processed: true          # 跳过已处理的职位
+    force_reprocess: false        # 强制重新处理所有职位
+    auto_resume: true             # 自动恢复中断的处理
+    checkpoint_interval: 50       # 检查点间隔（处理多少个职位后保存进度）
+    max_retry_attempts: 3         # 单个职位最大重试次数
+    
+  # LLM配置
+  llm:
+    provider: "zhipu"  # zhipu, openai, claude
+    model: "glm-4-flash"
+    api_key: "${ZHIPU_API_KEY}"
+    temperature: 0.1
+    max_tokens: 2000
+    
+  # 向量数据库配置
+  vector_db:
+    persist_directory: "./chroma_db"
+    collection_name: "job_positions"
+    embeddings:
+      model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+      device: "cpu"
+      normalize_embeddings: true
+      
+  # 文档创建配置
+  documents:
+    types: ["overview", "responsibility", "requirement", "skills", "basic_requirements"]
+    create_comprehensive_doc: false
+    max_chunk_size: 500
+    chunk_overlap: 50
+    
+  # 应用配置
+  applications:
+    job_matching:
+      enabled: true
+      top_k: 10
+      similarity_threshold: 0.7
+      use_reranking: true
+      
+    resume_optimization:
+      enabled: true
+      max_suggestions: 5
+      include_market_analysis: true
+      
+    job_qa:
+      enabled: true
+      context_window: 5
+      max_response_length: 1000
+      
+  # 性能配置
+  performance:
+    max_concurrent_jobs: 5
+    cache_embeddings: true
+    batch_vector_operations: true
+```
+
+### 🚀 实现计划
+
+#### 开发阶段规划
+
+**阶段1：数据抽取基础设施** (优先级：高)
+- [x] 分析数据库中的职位数据结构和内容
+- [ ] 创建DatabaseJobReader类
+- [ ] 实现数据读取和预处理功能
+- [ ] 测试数据抽取流程
+
+**阶段2：RAG系统核心** (优先级：高)
+- [ ] 实现RAGSystemCoordinator
+- [ ] 集成现有的JobProcessor和VectorManager
+- [ ] 实现批量数据导入功能
+- [ ] 添加系统状态监控
+
+**阶段3：智能应用开发** (优先级：中)
+- [ ] 开发IntelligentJobMatcher
+- [ ] 开发ResumeOptimizer
+- [ ] 开发JobQASystem
+- [ ] 实现应用间的协调机制
+
+**阶段4：系统集成与优化** (优先级：中)
+- [ ] 创建统一API接口
+- [ ] 编写测试用例
+- [ ] 性能优化和错误处理
+- [ ] 创建使用示例和文档
+
+#### 技术实现要点
+
+**数据处理优化**：
+- 使用批量处理减少内存占用
+- 实现增量更新机制，避免重复处理
+- 添加数据验证和错误恢复
+- 支持断点续传功能
+
+**性能优化**：
+- 向量检索缓存机制
+- 异步处理支持
+- 数据库连接池管理
+- 内存使用优化
+
+**可扩展性设计**：
+- 插件化架构设计
+- 多种LLM提供商支持
+- 灵活的配置管理
+- 模块化组件设计
+
+### 📊 预期效果
+
+#### 功能特性
+- ✅ **智能职位匹配**：基于语义理解的精准匹配，匹配准确率提升30%
+- ✅ **简历优化建议**：个性化的简历改进方案，提升投递成功率
+- ✅ **职位智能问答**：自然语言查询职位信息，支持复杂查询
+- ✅ **实时数据更新**：支持新职位数据的自动导入和处理
+
+#### 技术优势
+- 🚀 **高性能**：批量处理和向量检索优化，处理速度提升50%
+- 🔧 **易扩展**：模块化设计，支持功能扩展和模型替换
+- 🛡️ **高可靠**：完善的错误处理和数据验证机制
+- 📊 **可监控**：详细的日志和性能指标，便于系统监控
+
+#### 业务价值
+- **提升投递精准度**：通过语义匹配减少无效投递
+- **优化求职体验**：智能问答和简历优化提升用户体验
+- **数据价值挖掘**：将爬取数据转化为智能应用价值
+- **系统可持续性**：建立可持续的数据处理和应用框架
+
+### 🎯 下一步行动
+
+1. **立即执行**：完成数据库内容分析，确认数据质量和结构
+2. **优先开发**：DatabaseJobReader和数据抽取流程实现
+3. **逐步实现**：按阶段完成各个组件的开发和集成
+4. **持续优化**：根据使用反馈不断改进系统性能和用户体验
+
+这个RAG系统将把现有的爬虫数据有效转换为智能应用，实现从数据收集到智能分析的完整闭环，为用户提供更精准、更智能的求职服务。

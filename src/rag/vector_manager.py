@@ -4,13 +4,21 @@ ChromaDB向量存储管理器
 负责职位信息的向量化存储、检索和管理。
 """
 
-from langchain.vectorstores import Chroma
-from langchain.embeddings import HuggingFaceEmbeddings
+try:
+    from langchain_chroma import Chroma
+except ImportError:
+    from langchain.vectorstores import Chroma
+
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+except ImportError:
+    from langchain.embeddings import HuggingFaceEmbeddings
+
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import LLMChainExtractor
 from langchain.schema import Document
-from langchain.llms import OpenAI
 from typing import List, Dict, Optional, Any
+from .llm_factory import create_llm
 import logging
 import os
 import json
@@ -81,12 +89,31 @@ class ChromaDBManager:
         try:
             # 初始化LLM压缩器
             llm_config = self.config.get('llm', {})
-            compressor = LLMChainExtractor.from_llm(
-                OpenAI(
-                    temperature=llm_config.get('temperature', 0),
-                    model_name=llm_config.get('model', 'gpt-3.5-turbo')
-                )
+            
+            # 获取LLM提供商和配置
+            provider = llm_config.get('provider', 'zhipu')
+            
+            # 检查必要的配置
+            if provider == 'zhipu' and not llm_config.get('api_key'):
+                logger.warning("未配置智谱GLM API密钥，跳过压缩检索器初始化")
+                return None
+            elif provider == 'openai' and not llm_config.get('api_key'):
+                logger.warning("未配置OpenAI API密钥，跳过压缩检索器初始化")
+                return None
+            elif provider == 'claude' and not llm_config.get('api_key'):
+                logger.warning("未配置Claude API密钥，跳过压缩检索器初始化")
+                return None
+            
+            # 创建LLM实例
+            llm = create_llm(
+                provider=provider,
+                model=llm_config.get('model', 'glm-4-flash' if provider == 'zhipu' else 'gpt-3.5-turbo'),
+                temperature=llm_config.get('temperature', 0),
+                max_tokens=llm_config.get('max_tokens', 1024),
+                **{k: v for k, v in llm_config.items() if k not in ['provider', 'model', 'temperature', 'max_tokens']}
             )
+            
+            compressor = LLMChainExtractor.from_llm(llm)
             
             # 创建压缩检索器
             retrieval_config = self.config.get('retrieval', {})
@@ -123,8 +150,8 @@ class ChromaDBManager:
             # 批量添加文档
             doc_ids = self.vectorstore.add_documents(documents)
             
-            # 持久化存储
-            self.vectorstore.persist()
+            # 新版本的langchain-chroma不需要手动persist，自动持久化
+            # self.vectorstore.persist()  # 已移除此方法
             
             logger.info(f"成功添加 {len(documents)} 个文档到向量数据库")
             return doc_ids
@@ -253,8 +280,8 @@ class ChromaDBManager:
             # 根据job_id过滤并删除
             collection.delete(where={"job_id": job_id})
             
-            # 持久化
-            self.vectorstore.persist()
+            # 新版本自动持久化
+            # self.vectorstore.persist()  # 已移除此方法
             
             logger.info(f"成功删除职位 {job_id} 的所有文档")
             return True
@@ -283,8 +310,8 @@ class ChromaDBManager:
                 metadatas=[metadata]
             )
             
-            # 持久化
-            self.vectorstore.persist()
+            # 新版本自动持久化
+            # self.vectorstore.persist()  # 已移除此方法
             
             logger.info(f"成功更新文档 {doc_id} 的元数据")
             return True
@@ -336,8 +363,15 @@ class ChromaDBManager:
     def close(self):
         """关闭连接并清理资源"""
         try:
-            # 持久化最后的更改
-            self.vectorstore.persist()
+            # 新版本自动持久化，无需手动调用persist
+            # self.vectorstore.persist()  # 已移除此方法
+            
+            # 清理向量存储引用，帮助释放文件句柄
+            if hasattr(self, 'vectorstore'):
+                self.vectorstore = None
+            if hasattr(self, 'compression_retriever'):
+                self.compression_retriever = None
+                
             logger.info("ChromaDB连接已关闭")
         except Exception as e:
             logger.error(f"关闭ChromaDB连接时出错: {e}")
