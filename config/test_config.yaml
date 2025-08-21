@@ -1,5 +1,43 @@
 # RAG系统测试配置文件
 
+# RAG系统配置
+rag_system:
+  # 数据库配置
+  database:
+    path: "./data/jobs.db"
+    batch_size: 50
+  
+  # LLM配置
+  llm:
+    provider: "zhipu"
+    model: "glm-4-flash"
+    api_key: "0175134f27a040709d7541e14b4db353.V3KP9u8rZ0oQj9s9"  # 智谱AI API密钥
+    temperature: 0.1
+    max_tokens: 1500
+    timeout_seconds: 30
+    retry_attempts: 3
+  
+  # 向量数据库配置
+  vector_db:
+    persist_directory: "./chroma_db"
+    collection_name: "job_positions"
+    embeddings:
+      model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+      device: "cpu"
+      normalize_embeddings: true
+  
+  # 文档创建配置
+  documents:
+    types: ["overview", "responsibility", "requirement", "skills", "basic_requirements"]
+    create_comprehensive_doc: false
+  
+  # 处理配置
+  processing:
+    skip_processed: true
+    force_reprocess: false
+    batch_size: 50
+    max_retry_attempts: 3
+
 # 测试环境配置
 test_environment:
   # 测试数据库配置
@@ -14,16 +52,6 @@ test_environment:
     test_persist_directory: "./data/test_chroma_db"
     cleanup_after_test: true
     collection_prefix: "test_"
-  
-  # 测试LLM配置
-  llm:
-    provider: "zhipu"
-    model: "glm-4-flash"
-    api_key: "test-key"  # 测试时使用的API密钥
-    temperature: 0.1
-    max_tokens: 1500
-    timeout_seconds: 30
-    retry_attempts: 3
 
 # 功能测试配置
 functional_tests:

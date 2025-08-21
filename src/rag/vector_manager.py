@@ -139,13 +139,16 @@ class ChromaDBManager:
             List[str]: 文档ID列表
         """
         try:
-            # 为文档添加时间戳和job_id
+            # 为文档添加时间戳和job_id，并过滤复杂元数据
             timestamp = datetime.now().isoformat()
             for doc in documents:
-                doc.metadata.update({
+                # 过滤复杂元数据（将列表转换为字符串）
+                filtered_metadata = self._filter_complex_metadata(doc.metadata)
+                filtered_metadata.update({
                     'created_at': timestamp,
                     'job_id': job_id
                 })
+                doc.metadata = filtered_metadata
             
             # 批量添加文档
             doc_ids = self.vectorstore.add_documents(documents)
@@ -159,6 +162,52 @@ class ChromaDBManager:
         except Exception as e:
             logger.error(f"添加文档到向量数据库失败: {e}")
             raise
+    
+    def _filter_complex_metadata(self, metadata: Dict) -> Dict:
+        """
+        过滤复杂元数据，将不支持的类型转换为字符串
+        
+        Args:
+            metadata: 原始元数据
+            
+        Returns:
+            过滤后的元数据
+        """
+        filtered = {}
+        for key, value in metadata.items():
+            if value is None:
+                filtered[key] = None
+            elif isinstance(value, (str, int, float, bool)):
+                filtered[key] = value
+            elif isinstance(value, list):
+                # 将列表转换为逗号分隔的字符串
+                filtered[key] = ', '.join(str(item) for item in value)
+            elif isinstance(value, dict):
+                # 将字典转换为JSON字符串
+                import json
+                filtered[key] = json.dumps(value, ensure_ascii=False)
+            else:
+                # 其他类型转换为字符串
+                filtered[key] = str(value)
+        
+        return filtered
+    
+    async def add_job_documents_async(self, documents: List[Document], job_id: str = None) -> List[str]:
+        """
+        异步添加职位文档到向量数据库
+        
+        Args:
+            documents: 文档列表
+            job_id: 职位ID
+            
+        Returns:
+            List[str]: 文档ID列表
+        """
+        import asyncio
+        
+        # 在线程池中执行同步操作
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.add_job_documents, documents, job_id)
     
     def search_similar_jobs(self, query: str, k: int = 5, filters: Dict = None) -> List[Document]:
         """

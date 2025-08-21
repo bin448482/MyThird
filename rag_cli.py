@@ -19,6 +19,7 @@ sys.path.append(str(Path(__file__).parent))
 from src.rag.rag_system_coordinator import RAGSystemCoordinator
 from src.rag.data_pipeline import RAGDataPipeline, create_progress_callback
 from src.rag.resume_optimizer import ResumeOptimizer
+from src.rag.vector_manager import ChromaDBManager
 
 def setup_logging(log_level: str = 'INFO', log_file: str = None):
     """设置日志配置"""
@@ -340,6 +341,152 @@ async def search_command(args):
         print(f"❌ 搜索失败: {e}")
         return False
 
+async def test_command(args):
+    """向量数据库测试命令"""
+    print("🧪 向量数据库测试")
+    print("=" * 30)
+    
+    try:
+        config = load_config(args.config)
+        vector_config = config.get('rag_system', {}).get('vector_db', {})
+        vector_manager = ChromaDBManager(vector_config)
+        
+        # 获取统计信息
+        print("\n📊 数据库统计:")
+        stats = vector_manager.get_collection_stats()
+        print(f"   文档数量: {stats.get('document_count', 0)}")
+        print(f"   集合名称: {stats.get('collection_name', 'unknown')}")
+        print(f"   存储路径: {stats.get('persist_directory', 'unknown')}")
+        
+        if stats.get('document_count', 0) == 0:
+            print("⚠️ 向量数据库为空")
+            vector_manager.close()
+            return True
+        
+        # 检查文档样本
+        print("\n📄 文档样本:")
+        collection = vector_manager.vectorstore._collection
+        sample_data = collection.get(limit=args.sample_size or 3)
+        
+        if sample_data['ids']:
+            for i, doc_id in enumerate(sample_data['ids']):
+                content = sample_data['documents'][i]
+                metadata = sample_data['metadatas'][i] if sample_data['metadatas'] else {}
+                
+                print(f"   文档 {i+1}:")
+                print(f"     ID: {doc_id}")
+                print(f"     长度: {len(content)} 字符")
+                print(f"     预览: {content[:100]}...")
+                print(f"     职位ID: {metadata.get('job_id', '未知')}")
+                print(f"     类型: {metadata.get('document_type', '未知')}")
+                print()
+        
+        # 测试搜索功能
+        if args.test_search:
+            print("🔍 搜索功能测试:")
+            test_queries = args.queries.split(',') if args.queries else ["Python", "开发工程师", "前端"]
+            
+            for query in test_queries:
+                results = vector_manager.search_similar_jobs(query.strip(), k=2)
+                scored_results = vector_manager.similarity_search_with_score(query.strip(), k=2)
+                
+                print(f"   查询 '{query.strip()}': {len(results)} 个结果")
+                if scored_results:
+                    top_score = scored_results[0][1]
+                    print(f"     最高相似度: {top_score:.3f}")
+        
+        # 检查元数据字段
+        print("\n🏷️ 元数据字段:")
+        if sample_data['metadatas']:
+            all_fields = set()
+            for metadata in sample_data['metadatas']:
+                if metadata:
+                    all_fields.update(metadata.keys())
+            print(f"   字段: {list(all_fields)}")
+        else:
+            print("   ⚠️ 没有元数据")
+        
+        # 保存测试报告
+        if args.output:
+            test_report = {
+                'timestamp': datetime.now().isoformat(),
+                'stats': stats,
+                'sample_documents': len(sample_data['ids']) if sample_data['ids'] else 0,
+                'metadata_fields': list(all_fields) if sample_data['metadatas'] else []
+            }
+            
+            with open(args.output, 'w', encoding='utf-8') as f:
+                json.dump(test_report, f, ensure_ascii=False, indent=2, default=str)
+            print(f"\n💾 测试报告已保存到: {args.output}")
+        
+        vector_manager.close()
+        print("\n✅ 向量数据库测试完成")
+        return True
+        
+    except Exception as e:
+        print(f"❌ 测试失败: {e}")
+        return False
+
+async def clear_command(args):
+    """清理向量数据库命令"""
+    print("🗑️ 清理向量数据库")
+    print("=" * 30)
+    
+    try:
+        config = load_config(args.config)
+        vector_config = config.get('rag_system', {}).get('vector_db', {})
+        vector_manager = ChromaDBManager(vector_config)
+        
+        # 获取当前统计
+        stats = vector_manager.get_collection_stats()
+        doc_count = stats.get('document_count', 0)
+        
+        print(f"📊 当前文档数量: {doc_count}")
+        
+        if doc_count == 0:
+            print("⚠️ 向量数据库已经是空的")
+            vector_manager.close()
+            return True
+        
+        # 确认删除
+        if not args.force:
+            confirm = input(f"确定要清空所有 {doc_count} 个文档吗？(y/N): ")
+            if confirm.lower() != 'y':
+                print("操作已取消")
+                vector_manager.close()
+                return True
+        
+        # 执行清理
+        if args.job_id:
+            # 删除特定职位的文档
+            success = vector_manager.delete_documents(args.job_id)
+            if success:
+                print(f"✅ 成功删除职位 {args.job_id} 的文档")
+            else:
+                print(f"❌ 删除职位 {args.job_id} 的文档失败")
+        else:
+            # 清空所有文档
+            collection = vector_manager.vectorstore._collection
+            all_data = collection.get()
+            
+            if all_data['ids']:
+                collection.delete(ids=all_data['ids'])
+                print(f"✅ 成功清空 {len(all_data['ids'])} 个文档")
+            else:
+                print("📝 向量数据库已经是空的")
+        
+        # 验证清理结果
+        new_stats = vector_manager.get_collection_stats()
+        new_count = new_stats.get('document_count', 0)
+        print(f"📊 清理后文档数量: {new_count}")
+        
+        vector_manager.close()
+        return True
+        
+    except Exception as e:
+        print(f"❌ 清理失败: {e}")
+        return False
+
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(
@@ -364,6 +511,15 @@ def main():
   
   # 搜索相关职位
   python rag_cli.py search "Python开发工程师" --limit 5
+  
+  # 测试向量数据库
+  python rag_cli.py test --test-search --queries "Python,Java,前端"
+  
+  # 清理向量数据库
+  python rag_cli.py clear --force
+  
+  # 删除特定职位文档
+  python rag_cli.py clear --job-id job123
         """
     )
     
@@ -405,6 +561,18 @@ def main():
     search_parser.add_argument('--limit', '-l', type=int, default=10, help='返回结果数量')
     search_parser.add_argument('--output', '-o', help='输出文件路径')
     
+    # 测试命令
+    test_parser = subparsers.add_parser('test', help='向量数据库测试')
+    test_parser.add_argument('--sample-size', '-s', type=int, default=3, help='样本文档数量')
+    test_parser.add_argument('--test-search', action='store_true', help='测试搜索功能')
+    test_parser.add_argument('--queries', help='测试查询（逗号分隔）')
+    test_parser.add_argument('--output', '-o', help='测试报告输出路径')
+    
+    # 清理命令
+    clear_parser = subparsers.add_parser('clear', help='清理向量数据库')
+    clear_parser.add_argument('--job-id', help='删除特定职位的文档')
+    clear_parser.add_argument('--force', '-f', action='store_true', help='强制删除，不询问确认')
+    
     args = parser.parse_args()
     
     # 设置日志
@@ -426,6 +594,10 @@ def main():
             success = asyncio.run(optimize_command(args))
         elif args.command == 'search':
             success = asyncio.run(search_command(args))
+        elif args.command == 'test':
+            success = asyncio.run(test_command(args))
+        elif args.command == 'clear':
+            success = asyncio.run(clear_command(args))
         else:
             parser.print_help()
             success = False
