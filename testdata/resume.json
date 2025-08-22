@@ -1,0 +1,351 @@
+{
+  "name": "占彬 (Zhan Bin)",
+  "phone": "180-1638-1485",
+  "email": "76626123@qq.com",
+  "location": "浦东新区环林东路879弄55号601",
+  "total_experience_years": 20,
+  "current_position": "数据平台架构师",
+  "current_company": "Zoetis",
+  "skill_categories": [
+    {
+      "category_name": "core_skills",
+      "skills": [
+        "数据工程师",
+        "AI/ML架构师",
+        "技术管理者",
+        "端到端AI系统开发",
+        "Scrum方法论",
+        "企业分布式系统开发",
+        "web互联网架构构建",
+        "技术领导",
+        "敏捷实践",
+        "企业级系统架构设计",
+        "项目风险管理",
+        "技术债务控制"
+      ],
+      "proficiency_level": "advanced",
+      "years_experience": null
+    },
+    {
+      "category_name": "programming_languages",
+      "skills": [
+        "C#",
+        "Python",
+        "JavaScript",
+        "TypeScript",
+        "Go",
+        "Java"
+      ],
+      "proficiency_level": "expert",
+      "years_experience": null
+    },
+    {
+      "category_name": "cloud_platforms",
+      "skills": [
+        "Azure",
+        "Azure Solutions Architect Expert",
+        "Azure Administrator",
+        "App Service",
+        "Functions",
+        "Databricks",
+        "Data Factory",
+        "Azure Storage",
+        "Azure Data Lake Storage Gen2"
+      ],
+      "proficiency_level": "expert",
+      "years_experience": null
+    },
+    {
+      "category_name": "ai_ml_skills",
+      "skills": [
+        "机器学习",
+        "深度学习",
+        "计算机视觉",
+        "PyTorch",
+        "TensorFlow",
+        "YOLO",
+        "人体关键点检测",
+        "注意力机制",
+        "ResNet",
+        "推理加速",
+        "内存优化",
+        "批量预测",
+        "模型部署",
+        "NumPy",
+        "Pandas",
+        "OpenCV",
+        "PIL",
+        "Matplotlib",
+        "scikit-learn",
+        "LangChain",
+        "LlamaIndex",
+        "OpenAI API",
+        "Azure OpenAI",
+        "RAG架构",
+        "提示工程"
+      ],
+      "proficiency_level": "advanced",
+      "years_experience": null
+    },
+    {
+      "category_name": "data_engineering_skills",
+      "skills": [
+        "OLTP",
+        "OLAP",
+        "数据血缘追踪",
+        "元数据管理",
+        "SSIS",
+        "Informatica",
+        "Databricks",
+        "Azure Data Factory",
+        "Spark",
+        "RDD",
+        "HDFS",
+        "HIVE",
+        "PySpark",
+        "Azure SQL",
+        "MySQL",
+        "PostgreSQL",
+        "Cosmos DB",
+        "Redis",
+        "OLTP",
+        "OLAP",
+        "数据血缘追踪",
+        "元数据管理"
+      ],
+      "proficiency_level": "advanced",
+      "years_experience": null
+    },
+    {
+      "category_name": "management_skills",
+      "skills": [
+        "技术团队管理",
+        "Scrum Master",
+        "敏捷开发实践者",
+        "架构设计",
+        "风险控制",
+        "DevOps",
+        "CI/CD",
+        "自动化部署",
+        "版本管理",
+        "数据治理",
+        "数据质量校验",
+        "团队建设",
+        "项目管理"
+      ],
+      "proficiency_level": "advanced",
+      "years_experience": null
+    }
+  ],
+  "work_history": [
+    {
+      "company": "Zoetis",
+      "position": "数据平台架构师",
+      "start_date": "2023-06",
+      "end_date": null,
+      "duration_years": 0.8,
+      "responsibilities": [
+        "从0到1搭建基于Databricks的数据处理与分析平台",
+        "设计四层次数据架构 (Inbox → Raw → Transform → Governed)",
+        "实现湖仓一体架构，替代传统DWH方案",
+        "性能优化：关键报表运行时间提升2-3倍"
+      ],
+      "achievements": [
+        "关键报表运行时间提升2-3倍",
+        "与Azure平台深度集成 (ADF, Functions)",
+        "数据质量监控体系建设"
+      ],
+      "technologies": [
+        "Databricks",
+        "Delta Lake",
+        "Azure",
+        "ADF",
+        "Functions"
+      ],
+      "industry": "制药/医疗"
+    },
+    {
+      "company": "PWC",
+      "position": "技术组长",
+      "start_date": "2016-11",
+      "end_date": "2023-02",
+      "duration_years": 6.4,
+      "responsibilities": [
+        "负责解决方案架构设计",
+        "Azure Data Factory + Databricks数据管道",
+        "制药行业交易数据报告系统"
+      ],
+      "achievements": [
+        "实现99.99% SLA",
+        "ETL架构重设计，整合资源调度和分布式计算",
+        "DevOps CI/CD流程实施"
+      ],
+      "technologies": [
+        "Azure Data Factory",
+        "Databricks",
+        "制药行业数据",
+        "ETL",
+        "DevOps"
+      ],
+      "industry": "制药/医疗"
+    },
+    {
+      "company": "HP",
+      "position": "Leader & Scrum Master",
+      "start_date": "2010-10",
+      "end_date": "2016-10",
+      "duration_years": 5.8,
+      "responsibilities": [
+        "20人团队管理，6个开发小组",
+        "SABA培训系统API接口开发",
+        "Informatica ETL开发"
+      ],
+      "achievements": [
+        "内部项目云迁移",
+        "HP云IAAS服务构建",
+        "基础设施自动化"
+      ],
+      "technologies": [
+        "SABA培训系统",
+        "Informatica",
+        "云迁移",
+        "IAAS",
+        "自动化"
+      ],
+      "industry": "IT/互联网"
+    }
+  ],
+  "education": [
+    {
+      "degree": "本科",
+      "major": "计算机及应用",
+      "university": "江苏科技大学 (华东船舶工业学院)",
+      "graduation_year": "（未提及）",
+      "gpa": null,
+      "honors": []
+    }
+  ],
+  "projects": [
+    {
+      "name": "Zoetis NGSE (Next Generation Sales Engine)",
+      "description": "从0到1搭建基于Databricks的数据处理与分析平台，设计四层次数据架构，实现湖仓一体架构，替代传统DWH方案。",
+      "technologies": [
+        "Databricks",
+        "Delta Lake",
+        "Azure Data Factory",
+        "Azure Functions",
+        "数据质量监控"
+      ],
+      "duration": "2023.6 - 至今",
+      "achievements": [
+        "搭建基于Databricks的数据处理与分析平台",
+        "设计四层次数据架构",
+        "实现湖仓一体架构",
+        "性能优化：关键报表运行时间提升2-3倍"
+      ],
+      "role": "数据平台架构师",
+      "url": null
+    },
+    {
+      "name": "AI增强图像爬虫系统",
+      "description": "基于ResNet50的边界框注意力机制，计算复杂度降低67%，三级Fallback机制，样本利用率95-100%，模型验证准确率91.27%，推理服务稳定性100%。",
+      "technologies": [
+        "ResNet50",
+        "注意力机制",
+        "模块化架构",
+        "工厂模式",
+        "ML流水线",
+        "内容去重"
+      ],
+      "duration": "None",
+      "achievements": [
+        "计算复杂度降低67%",
+        "样本利用率95-100%",
+        "模型验证准确率91.27%",
+        "推理服务稳定性100%"
+      ],
+      "role": "AI系统架构师",
+      "url": null
+    },
+    {
+      "name": "Remedium (BI)项目",
+      "description": "负责解决方案架构设计，使用Azure Data Factory + Databricks数据管道，构建制药行业交易数据报告系统。",
+      "technologies": [
+        "Azure Data Factory",
+        "Databricks",
+        "制药行业交易数据报告"
+      ],
+      "duration": "2016.11 - 2023.2",
+      "achievements": [
+        "构建制药行业交易数据报告系统"
+      ],
+      "role": "技术组长",
+      "url": null
+    },
+    {
+      "name": "SMART项目",
+      "description": "医疗保险预审核系统，实现99.99% SLA，ETL架构重设计，整合资源调度和分布式计算，DevOps CI/CD流程实施。",
+      "technologies": [
+        "ETL架构",
+        "资源调度",
+        "分布式计算",
+        "DevOps CI/CD"
+      ],
+      "duration": "2016.11 - 2023.2",
+      "achievements": [
+        "实现99.99% SLA",
+        "ETL架构重设计",
+        "DevOps CI/CD流程实施"
+      ],
+      "role": "None",
+      "url": null
+    },
+    {
+      "name": "LMS项目",
+      "description": "SABA培训系统API接口开发，Informatica ETL开发。",
+      "technologies": [
+        "SABA培训系统API接口",
+        "Informatica ETL"
+      ],
+      "duration": "2010.10 - 2016.10",
+      "achievements": [
+        "SABA培训系统API接口开发",
+        "Informatica ETL开发"
+      ],
+      "role": "Leader & Scrum Master",
+      "url": null
+    },
+    {
+      "name": "Move To HP Cloud",
+      "description": "内部项目云迁移，HP云IAAS服务构建，基础设施自动化。",
+      "technologies": [
+        "云迁移",
+        "HP云IAAS服务",
+        "基础设施自动化"
+      ],
+      "duration": "2010.10 - 2016.10",
+      "achievements": [
+        "内部项目云迁移",
+        "HP云IAAS服务构建",
+        "基础设施自动化"
+      ],
+      "role": "None",
+      "url": null
+    }
+  ],
+  "certifications": [],
+  "languages": [],
+  "industry_experience": {},
+  "preferred_positions": [],
+  "expected_salary_range": {
+    "min": 0,
+    "max": 0
+  },
+  "career_objectives": [],
+  "soft_skills": [],
+  "personality_traits": [],
+  "created_at": "2025-08-22T18:49:37.609754",
+  "updated_at": "2025-08-22T18:49:37.609759",
+  "version": "1.0",
+  "profile_type": "rag_generated"
+}

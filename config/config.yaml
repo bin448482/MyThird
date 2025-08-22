@@ -1,204 +1,254 @@
-# 自动投递简历工具配置文件
-# 基于config.example.yaml创建的实际配置
+# RAG系统测试配置文件
 
-# 基础配置
-app:
-  name: "Resume Auto Submitter"
-  version: "1.0.0"
-  debug: true
+# RAG系统配置
+rag_system:
+  # 数据库配置
+  database:
+    path: "./data/jobs.db"
+    batch_size: 50
+  
+  # LLM配置
+  llm:
+    provider: "zhipu"
+    model: "glm-4-flash"
+    api_key: "0175134f27a040709d7541e14b4db353.V3KP9u8rZ0oQj9s9"  # 智谱AI API密钥
+    temperature: 0.1
+    max_tokens: 1500
+    timeout_seconds: 30
+    retry_attempts: 3
+  
+  # 向量数据库配置
+  vector_db:
+    persist_directory: "./data/test_chroma_db"
+    collection_name: "job_positions"
+    embeddings:
+      model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+      device: "cpu"
+      normalize_embeddings: true
+  
+  # 文档创建配置
+  documents:
+    types: ["overview", "responsibility", "requirement", "skills", "basic_requirements"]
+    create_comprehensive_doc: false
+  
+  # 处理配置
+  processing:
+    skip_processed: true
+    force_reprocess: false
+    batch_size: 50
+    max_retry_attempts: 3
 
-# 运行模式配置
-mode:
-  development: true           # 开发模式
-  skip_login: false          # 跳过登录检查
-  use_saved_session: true    # 使用保存的会话
-  session_file: "data/session.json"  # 会话文件路径
-  session_timeout: 3600      # 会话超时时间（秒）
-  auto_save_session: true    # 自动保存会话
-  close_on_complete: false   # 完成后是否关闭浏览器
-  reuse_session: true        # 重用浏览器会话
+# 测试环境配置
+test_environment:
+  # 测试数据库配置
+  database:
+    test_db_path: "./data/jobs.db"
+    backup_db_path: "./test_data/test_jobs_backup.db"
+    create_test_data: true
+    test_records_count: 10
+  
+  # 测试向量数据库配置
+  vector_db:
+    test_persist_directory: "./data/test_chroma_db"
+    cleanup_after_test: true
+    collection_prefix: "test_"
 
-# 数据库配置
-database:
-  path: "./data/jobs.db"
-  enabled: true              # 是否启用数据库存储
-
-# 网站配置
-websites:
-  zhilian:
+# 功能测试配置
+functional_tests:
+  # 系统初始化测试
+  system_initialization:
     enabled: true
-    base_url: "https://www.zhaopin.com"
-    login_url: "https://passport.zhaopin.com/login"
-    search_url: "https://sou.zhaopin.com"
-    login_check_element: ".user-info"
-    submit_button_selector: ".btn-apply"
+    timeout_seconds: 60
+    retry_count: 3
   
-  qiancheng:
+  # 数据库操作测试
+  database_operations:
     enabled: true
-    base_url: "https://www.51job.com"
-    login_url: "https://login.51job.com"
-    search_url: "https://search.51job.com"
-    login_check_element: ".login-info"
-    submit_button_selector: ".apply-btn"
+    test_batch_sizes: [1, 5, 10, 20]
+    max_test_records: 50
   
-  boss:
+  # 职位处理测试
+  job_processing:
     enabled: true
-    base_url: "https://www.zhipin.com"
-    login_url: "https://login.zhipin.com"
-    search_url: "https://www.zhipin.com/c101010100"
-    login_check_element: ".user-name"
-    submit_button_selector: ".btn-startchat"
-
-# Selenium配置
-selenium:
-  browser: "chrome"  # chrome, firefox, edge
-  headless: false    # 测试时显示浏览器
-  window_size: "1920,1080"
-  page_load_timeout: 30
-  element_wait_timeout: 10
-  implicit_wait: 5
-
-# 爬虫配置
-crawler:
-  delay_min: 2  # 最小延迟秒数
-  delay_max: 5  # 最大延迟秒数
-  max_retries: 3
-  login_wait_timeout: 300  # 等待人工登录超时时间(秒)
-
-# 防反爬配置
-anti_bot:
-  random_delay: true
-  mouse_simulation: true
-  user_agent_rotation: true
-  scroll_simulation: true
-  mouse_speed: "normal"  # slow, normal, fast
-  scroll_speed: "normal"
-  typing_speed: "normal"
-  simulate_reading: true
-  random_navigation_order: true
-  rest_between_batches: true
-  detect_captcha: true
-  max_retry_attempts: 3
-
-# AI分析配置
-ai:
-  provider: "openai"  # openai, local, azure
-  model: "gpt-3.5-turbo"
-  api_key: "your-api-key-here"  # 测试时可以为空
-  base_url: ""
-  temperature: 0.1
-  max_tokens: 1000
-
-# 匹配算法配置
-matching:
-  weights:
-    skills: 0.5
-    experience: 0.3
-    salary: 0.2
+    test_fallback_mode: true  # 测试备用处理模式
+    test_llm_mode: false      # 是否测试LLM模式（需要有效API密钥）
   
-  thresholds:
-    auto_submit: 0.8  # 自动投递阈值
-    manual_review: 0.6  # 人工审核阈值
-    skip: 0.3  # 跳过阈值
-
-# 简历配置
-resume:
-  skills: ["Python", "Java", "React", "Node.js"]
-  experience_years: 3
-  expected_salary_min: 15000
-  expected_salary_max: 25000
-  preferred_locations: ["上海"]
-
-# 搜索配置
-search:
-  # 基础搜索参数
-  base_url: "https://we.51job.com/pc/search"
-  job_area: "020000"  # 上海地区
-  search_type: "2"
-  keyword_type: ""
-  
-  # 搜索关键词列表 (按优先级排序)
-  keywords:
-    priority_1:
-      - "数据架构师"
-      - "Azure架构师"
-      - "AI工程师"
-    priority_2:
-      - "Databricks工程师"
-      - "技术总监"
-      - "机器学习工程师"
-    priority_3:
-      - "LLM工程师"
-      - "数据平台负责人"
-      - "制药 数据工程师"
-  
-  # 当前使用的关键词
-  current_keyword: "AI"
-  
-  # 搜索策略配置
-  strategy:
-    max_results_per_keyword: 50
-    delay_between_searches: 3
-    auto_scroll_pages: 5
-    save_job_details: true
-    # 分页配置
-    max_pages: 10              # 默认最大页数
-    enable_pagination: true    # 是否启用分页
-    page_delay: 2              # 页面间延迟时间（秒）
-    page_delay_max: 5          # 页面间最大延迟时间（秒）
-
-# 模块配置
-modules:
-  login:
+  # 向量操作测试
+  vector_operations:
     enabled: true
-    auto_save_session: true
-    session_timeout: 3600    # 会话超时时间（秒）
+    test_document_types: ["overview", "responsibility", "requirement", "skills"]
+    search_queries: ["Python开发", "Java工程师", "前端开发", "数据分析"]
+    search_k_values: [1, 3, 5, 10]
   
-  extraction:
+  # 简历优化测试
+  resume_optimization:
     enabled: true
-    max_concurrent: 1        # 最大并发数
-    retry_attempts: 3        # 重试次数
+    test_resume_formats: ["basic", "detailed"]
+    test_optimization_types: ["gap_analysis", "skill_suggestions", "content_optimization"]
+
+# 性能基准测试配置
+performance_tests:
+  # 系统初始化性能
+  initialization_benchmark:
+    enabled: true
+    test_runs: 5
+    acceptable_init_time_seconds: 10
+    acceptable_memory_increase_mb: 100
+  
+  # 批量处理性能
+  batch_processing_benchmark:
+    enabled: true
+    batch_sizes: [1, 5, 10, 20, 50]
+    max_jobs_per_batch: 100
+    acceptable_jobs_per_second: 2
+  
+  # 向量搜索性能
+  vector_search_benchmark:
+    enabled: true
+    search_queries: 10
+    k_values: [1, 3, 5, 10, 20]
+    acceptable_search_time_ms: 500
+  
+  # 并发处理性能
+  concurrent_processing_benchmark:
+    enabled: true
+    concurrency_levels: [1, 2, 4, 8]
+    jobs_per_level: 20
+    acceptable_concurrent_speedup: 1.5
+  
+  # 内存使用基准
+  memory_usage_benchmark:
+    enabled: true
+    job_checkpoints: [10, 20, 50, 100]
+    acceptable_memory_per_job_mb: 5
+
+# 错误场景测试配置
+error_scenario_tests:
+  # 数据库错误测试
+  database_errors:
+    enabled: true
+    test_scenarios:
+      - "file_not_found"
+      - "permission_denied"
+      - "schema_mismatch"
+      - "connection_timeout"
+  
+  # LLM API错误测试
+  llm_api_errors:
+    enabled: true
+    test_scenarios:
+      - "invalid_api_key"
+      - "network_timeout"
+      - "rate_limit_exceeded"
+      - "invalid_response_format"
+  
+  # 向量数据库错误测试
+  vector_db_errors:
+    enabled: true
+    test_scenarios:
+      - "directory_permission_error"
+      - "disk_space_insufficient"
+      - "search_failure"
+      - "embedding_model_error"
+  
+  # 数据验证错误测试
+  data_validation_errors:
+    enabled: true
+    test_scenarios:
+      - "empty_data"
+      - "malicious_data"
+      - "encoding_errors"
+      - "oversized_data"
+  
+  # 资源耗尽测试
+  resource_exhaustion_tests:
+    enabled: true
+    test_scenarios:
+      - "memory_exhaustion"
+      - "file_handle_exhaustion"
+      - "cpu_overload"
+
+# 测试报告配置
+test_reporting:
+  # 报告输出目录
+  output_directory: "./test_reports"
+  
+  # 报告格式
+  formats:
+    - "json"
+    - "html"  # 如果需要HTML报告
+  
+  # 报告详细程度
+  detail_level: "full"  # full, summary, minimal
+  
+  # 是否包含性能图表
+  include_performance_charts: true
+  
+  # 是否发送测试结果通知
+  notifications:
+    enabled: false
+    email_recipients: []
+    webhook_url: ""
+
+# 测试数据配置
+test_data:
+  # 测试职位数据
+  sample_jobs:
+    - job_id: 1
+      title: "Python后端开发工程师"
+      company: "科技公司A"
+      location: "北京"
+      description: "负责Python后端开发，熟悉Django/Flask框架，有数据库设计经验"
+      education: "本科及以上"
+      experience: "3-5年"
+      salary: "20-30K"
     
-  browser:
-    reuse_session: true      # 重用浏览器会话
-    close_on_complete: false # 完成后是否关闭浏览器
-
-# 登录相关配置
-login:
-  login_url: "https://login.51job.com"
-  success_indicators:
-    - ".user-info"
-    - ".user-name"
-    - "[data-testid='user-avatar']"
-    - ".header-user"
-  wait_timeout: 300
-  check_interval: 2
-  failure_indicators:
-    - ".error-message"
-    - ".login-error"
-    - ".alert-danger"
-
-# 页面元素选择器
-selectors:
-  search_page:
-    job_list: ".joblist"
-    job_title: ".jname a"  # 修复：添加链接选择器
-    company_name: ".cname"
-    salary: ".sal"
-    location: ".area"
-    next_page: ".btn_next"
+    - job_id: 2
+      title: "Java高级开发工程师"
+      company: "互联网公司B"
+      location: "上海"
+      description: "负责Java微服务开发，熟悉Spring Boot，有分布式系统经验"
+      education: "本科及以上"
+      experience: "5-8年"
+      salary: "30-50K"
+    
+    - job_id: 3
+      title: "前端开发工程师"
+      company: "创业公司C"
+      location: "深圳"
+      description: "负责React/Vue前端开发，熟悉现代前端工程化工具"
+      education: "专科及以上"
+      experience: "2-4年"
+      salary: "15-25K"
   
-  job_detail:
-    job_description: ".job-description"
-    requirements: ".job-requirements"
-    company_info: ".company-info"
-    benefits: ".job-benefits"
-    apply_button: ".apply-btn"
+  # 测试简历数据
+  sample_resumes:
+    - name: "张三"
+      current_position: "Python开发工程师"
+      years_of_experience: 3
+      education: "本科 - 计算机科学"
+      skills: ["Python", "Django", "MySQL", "Redis", "Docker"]
+      summary: "3年Python开发经验，熟悉Web开发和数据库设计"
+    
+    - name: "李四"
+      current_position: "Java开发工程师"
+      years_of_experience: 5
+      education: "硕士 - 软件工程"
+      skills: ["Java", "Spring Boot", "MySQL", "Redis", "Kafka"]
+      summary: "5年Java开发经验，有微服务架构和分布式系统经验"
 
-# 日志配置
-logging:
-  level: "INFO"
-  file_path: "./logs/app.log"
-  max_file_size: "10MB"
-  backup_count: 5
-  console_output: true
+# 测试环境清理配置
+cleanup:
+  # 测试完成后是否自动清理
+  auto_cleanup: true
+  
+  # 清理项目
+  cleanup_items:
+    - "test_vector_databases"
+    - "test_log_files"
+    - "temporary_test_files"
+  
+  # 保留项目
+  preserve_items:
+    - "test_reports"
+    - "test_database_backups"

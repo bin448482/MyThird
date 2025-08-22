@@ -19,7 +19,7 @@ rag_system:
   
   # 向量数据库配置
   vector_db:
-    persist_directory: "./chroma_db"
+    persist_directory: "./data/test_chroma_db"
     collection_name: "job_positions"
     embeddings:
       model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

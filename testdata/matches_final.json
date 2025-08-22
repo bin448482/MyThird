@@ -1,0 +1,239 @@
+{
+  "matching_summary": {
+    "total_matches": 4,
+    "high_priority": 0,
+    "medium_priority": 0,
+    "low_priority": 3,
+    "average_score": 0.5391363944557173,
+    "processing_time": 0.08222055435180664,
+    "timestamp": "2025-08-22T19:06:53.483417"
+  },
+  "matches": [
+    {
+      "job_id": "qc_167390385",
+      "job_title": "Intern for PCX Strategic Programs & Governance",
+      "company": "思爱普（中国）有限公司",
+      "location": "上海·浦东新区",
+      "salary_range": null,
+      "overall_score": 0.5817562208302561,
+      "dimension_scores": {
+        "semantic_similarity": 0.00937317449759564,
+        "skills_match": 0.9615853658536586,
+        "experience_match": 0.9,
+        "industry_match": 0.7,
+        "salary_match": 0.8
+      },
+      "match_level": "fair",
+      "recommendation_priority": "低优先级",
+      "match_analysis": {
+        "strengths": [
+          "技能匹配度极高",
+          "经验完全符合要求",
+          "薪资期望合理"
+        ],
+        "weaknesses": [
+          "职位描述匹配度有待提高"
+        ],
+        "recommendations": [],
+        "matched_skills": [
+          "python",
+          "java",
+          "ai"
+        ],
+        "missing_skills": [],
+        "skill_gap_score": 0.038414634146341387,
+        "experience_alignment": 0.9,
+        "industry_fit": 0.7
+      },
+      "confidence_level": 0.881587604785867,
+      "timestamp": "2025-08-22T19:06:53.483399"
+    },
+    {
+      "job_id": "qc_167514237",
+      "job_title": "python开发工程师",
+      "company": "南通近屿教育咨询有限公司",
+      "location": "上海",
+      "salary_range": {
+        "min": 12000,
+        "max": 16000
+      },
+      "overall_score": 0.5556155810560517,
+      "dimension_scores": {
+        "semantic_similarity": 0.003447754459936503,
+        "skills_match": 0.8480295566502464,
+        "experience_match": 0.95,
+        "industry_match": 0.7,
+        "salary_match": 0.8
+      },
+      "match_level": "fair",
+      "recommendation_priority": "低优先级",
+      "match_analysis": {
+        "strengths": [
+          "技能匹配度极高",
+          "经验完全符合要求",
+          "薪资期望合理"
+        ],
+        "weaknesses": [
+          "职位描述匹配度有待提高"
+        ],
+        "recommendations": [],
+        "matched_skills": [
+          "python",
+          "django",
+          "mysql",
+          "redis"
+        ],
+        "missing_skills": [
+          "flask"
+        ],
+        "skill_gap_score": 0.15197044334975363,
+        "experience_alignment": 0.95,
+        "industry_fit": 0.7
+      },
+      "confidence_level": 0.885656894238367,
+      "timestamp": "2025-08-22T19:06:53.476786"
+    },
+    {
+      "job_id": "qc_167513440",
+      "job_title": "python开发工程师",
+      "company": "上海同科交通科技有限公司",
+      "location": "上海·杨浦区",
+      "salary_range": {
+        "min": 13000,
+        "max": 14000
+      },
+      "overall_score": 0.5283507736915206,
+      "dimension_scores": {
+        "semantic_similarity": 0.0065181580143685745,
+        "skills_match": 0.7535647279549721,
+        "experience_match": 0.95,
+        "industry_match": 0.7,
+        "salary_match": 0.8
+      },
+      "match_level": "fair",
+      "recommendation_priority": "低优先级",
+      "match_analysis": {
+        "strengths": [
+          "技能匹配度良好",
+          "经验完全符合要求",
+          "薪资期望合理"
+        ],
+        "weaknesses": [
+          "职位描述匹配度有待提高"
+        ],
+        "recommendations": [],
+        "matched_skills": [
+          "python",
+          "django",
+          "mysql",
+          "postgresql"
+        ],
+        "missing_skills": [
+          "flask",
+          "docker",
+          "linux"
+        ],
+        "skill_gap_score": 0.2464352720450279,
+        "experience_alignment": 0.95,
+        "industry_fit": 0.7
+      },
+      "confidence_level": 0.8921048282713797,
+      "timestamp": "2025-08-22T19:06:53.481281"
+    },
+    {
+      "job_id": "qc_157844738",
+      "job_title": "React前端开发工程师",
+      "company": "深圳永盛运通国际货运代理有限公司上海分公司",
+      "location": "上海·静安区",
+      "salary_range": {
+        "min": 8000,
+        "max": 15000
+      },
+      "overall_score": 0.4908230022450406,
+      "dimension_scores": {
+        "semantic_similarity": 0.0016180820964195174,
+        "skills_match": 0.6341889117043128,
+        "experience_match": 0.95,
+        "industry_match": 0.7,
+        "salary_match": 0.8
+      },
+      "match_level": "poor",
+      "recommendation_priority": "不推荐",
+      "match_analysis": {
+        "strengths": [
+          "技能匹配度良好",
+          "经验完全符合要求",
+          "薪资期望合理"
+        ],
+        "weaknesses": [
+          "职位描述匹配度有待提高"
+        ],
+        "recommendations": [
+          "重点突出相关技能和项目经验"
+        ],
+        "matched_skills": [
+          "java",
+          "javascript",
+          "typescript"
+        ],
+        "missing_skills": [
+          "react",
+          "git",
+          "html",
+          "css",
+          "webpack"
+        ],
+        "skill_gap_score": 0.3658110882956872,
+        "experience_alignment": 0.95,
+        "industry_fit": 0.7
+      },
+      "confidence_level": 0.8939485533359063,
+      "timestamp": "2025-08-22T19:06:53.479368"
+    }
+  ],
+  "career_insights": {
+    "top_matching_positions": [
+      "python开发工程师",
+      "Intern for PCX Strategic Programs & Governance",
+      "React前端开发工程师"
+    ],
+    "skill_gap_analysis": {
+      "high_demand_missing": [],
+      "emerging_skills": [
+        "AI/ML",
+        "Cloud Native",
+        "DevOps",
+        "Microservices",
+        "Data Science"
+      ]
+    },
+    "salary_analysis": {
+      "market_range": {
+        "min": 8000,
+        "max": 16000
+      },
+      "your_range": {
+        "min": 0,
+        "max": 0
+      },
+      "market_position": "未设定期望薪资"
+    },
+    "market_trends": [
+      "AI/ML技能需求持续增长",
+      "云平台技能成为标配",
+      "全栈开发能力受欢迎",
+      "软技能越来越重要"
+    ],
+    "career_recommendations": [
+      "建议提升关键技能以增加匹配度",
+      "建议重点学习 flask 技能"
+    ]
+  },
+  "query_metadata": {
+    "query": "数据平台架构师 20年经验 核心技能: Python JavaScript 数据工程师 AI/ML架构师 技术管理者 端到端AI系统开发 Scrum方法论 企业分布式系统开发",
+    "filters": {},
+    "search_results_count": 51,
+    "candidate_jobs_count": 4,
+    "processing_time": 0.08222055435180664
+  }
+}
