@@ -1,0 +1,124 @@
+{
+  "timestamp": "2025-08-23 09:54:33",
+  "config_file": "config/integration_config.yaml",
+  "tests": {
+    "has_next_page": {
+      "method": "has_next_page",
+      "success": true,
+      "has_next": true,
+      "error": null,
+      "details": {
+        "current_url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+        "page_title": "【python(全文)招聘，求职】-前程无忧",
+        "page_info": {
+          "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+          "title": "【python(全文)招聘，求职】-前程无忧",
+          "current_page": 1,
+          "total_pages": null,
+          "has_next": true
+        },
+        "found_buttons": [
+          {
+            "selector": ".btn-next",
+            "text": "",
+            "enabled": true,
+            "displayed": true,
+            "classes": "btn-next"
+          },
+          {
+            "selector": "button.btn-next",
+            "text": "",
+            "enabled": true,
+            "displayed": true,
+            "classes": "btn-next"
+          }
+        ]
+      }
+    },
+    "navigate_to_next_page": {
+      "method": "navigate_to_next_page",
+      "success": true,
+      "navigated": true,
+      "error": null,
+      "details": {
+        "before": {
+          "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+          "page_info": {
+            "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+            "title": "【python(全文)招聘，求职】-前程无忧",
+            "current_page": 1,
+            "total_pages": null,
+            "has_next": true
+          }
+        },
+        "after": {
+          "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+          "page_info": {
+            "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+            "title": "【python(全文)招聘，求职】-前程无忧",
+            "current_page": 1,
+            "total_pages": null,
+            "has_next": true
+          }
+        },
+        "verification": {
+          "url_changed": false,
+          "page_changed": false,
+          "method_result": true
+        }
+      }
+    },
+    "pagination_flow": {
+      "method": "pagination_flow",
+      "success": true,
+      "pages_navigated": 3,
+      "error": null,
+      "page_results": [
+        {
+          "page_number": 1,
+          "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+          "has_next": true,
+          "page_info": {
+            "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+            "title": "【python(全文)招聘，求职】-前程无忧",
+            "current_page": 1,
+            "total_pages": null,
+            "has_next": true
+          },
+          "navigation_success": true
+        },
+        {
+          "page_number": 2,
+          "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+          "has_next": true,
+          "page_info": {
+            "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+            "title": "【python(全文)招聘，求职】-前程无忧",
+            "current_page": 1,
+            "total_pages": null,
+            "has_next": true
+          },
+          "navigation_success": true
+        },
+        {
+          "page_number": 3,
+          "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+          "has_next": true,
+          "page_info": {
+            "url": "https://we.51job.com/pc/search?jobarea=020000&keyword=python",
+            "title": "【python(全文)招聘，求职】-前程无忧",
+            "current_page": 1,
+            "total_pages": null,
+            "has_next": true
+          },
+          "navigation_success": true
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_tests": 3,
+    "passed_tests": 3,
+    "failed_tests": 0
+  }
+}

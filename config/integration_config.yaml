@@ -1,0 +1,406 @@
+# 智能简历投递系统 - 集成配置文件
+
+# 系统集成配置
+integration_system:
+  # 统一主控制器配置
+  master_controller:
+    max_concurrent_jobs: 10
+    checkpoint_interval: 100
+    error_retry_attempts: 3
+    enable_monitoring: true
+    execution_timeout: 3600  # 1小时
+    
+  # 作业调度器配置
+  job_scheduler:
+    queue_size: 1000
+    batch_size: 50
+    priority_levels: 5
+    max_concurrent_tasks: 10
+    worker_pool_size: 5
+    task_timeout: 300  # 5分钟
+    
+  # 数据传递接口配置
+  data_bridge:
+    validation_enabled: true
+    transformation_cache: true
+    cache_ttl: 3600  # 1小时
+    data_retention_days: 30
+    max_cache_size: 1000
+    
+  # 智能决策引擎配置
+  decision_engine:
+    enable_learning: true
+    submission_threshold: 0.7
+    priority_threshold: 0.8
+    urgent_threshold: 0.9
+    max_daily_submissions: 50
+    max_submissions_per_company: 3
+    
+    # 决策权重配置
+    weights:
+      match_score: 0.3
+      company_reputation: 0.2
+      salary_attractiveness: 0.2
+      location_preference: 0.1
+      career_growth_potential: 0.1
+      application_competition: 0.1
+    
+    # 决策标准
+    criteria:
+      min_salary_requirement: 15000  # 最低薪资要求(月薪)
+      preferred_locations:
+        - "北京"
+        - "上海"
+        - "深圳"
+        - "杭州"
+      blacklisted_companies:
+        - "黑名单公司1"
+        - "黑名单公司2"
+      required_skills:
+        - "Python"
+        - "机器学习"
+        - "数据分析"
+    
+  # 自动投递引擎配置
+  auto_submission:
+    max_submissions_per_day: 50
+    submission_delay: 5  # 投递间隔(秒)
+    max_concurrent_submissions: 3
+    enable_smart_delay: true
+    dry_run_mode: false  # 设为true进行测试
+    
+    # 投递重试配置
+    max_retries: 3
+    retry_delay: 10
+    
+    # 浏览器配置
+    browser_config:
+      headless: false
+      window_size: [1920, 1080]
+      user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+      timeout: 30
+
+# 搜索配置
+search:
+  base_url: "https://we.51job.com/pc/search"
+  job_area: "020000"  # 上海地区代码
+  search_type: "2"
+  keyword_type: ""  # 空值，表示默认搜索类型
+  current_keyword: "python"
+  keywords:
+    priority_1:
+      - "Python开发"
+      - "Python工程师"
+      - "后端开发"
+    priority_2:
+      - "数据分析师"
+      - "机器学习"
+      - "算法工程师"
+    priority_3:
+      - "全栈开发"
+      - "软件工程师"
+      - "技术专家"
+
+# 页面元素选择器
+selectors:
+  search_page:
+    job_list: ".joblist"
+    job_title: ".jname a"  # 修复：添加链接选择器
+    company_name: ".cname"
+    salary: ".sal"
+    location: ".area"
+    next_page: ".btn-next"
+  
+  job_detail:
+    job_description: ".job-description"
+    requirements: ".job-requirements"
+    company_info: ".company-info"
+    benefits: ".job-benefits"
+    apply_button: ".apply-btn"
+
+# RAG系统配置
+rag_system:
+  # LLM配置
+  llm:
+    provider: "zhipu"
+    api_key: "0175134f27a040709d7541e14b4db353.V3KP9u8rZ0oQj9s9"
+    model: "glm-4-flash"
+    temperature: 0.1
+    max_tokens: 1500
+  
+  # 数据库配置
+  database:
+    path: "./data/jobs.db"
+  
+  # 向量数据库配置
+  vector_db:
+    persist_directory: "./data/test_chroma_db"
+    collection_name: "job_positions"
+  
+  # 处理配置
+  processing:
+    batch_size: 50
+    chunk_size: 500
+    chunk_overlap: 50
+
+# 各模块集成配置
+modules:
+  # 职位提取模块
+  job_extraction:
+    enabled: true
+    max_pages_per_site: 10
+    extraction_timeout: 300
+    concurrent_extractions: 5
+    
+    # 提取源配置
+    sources:
+      - name: "智联招聘"
+        enabled: true
+        base_url: "https://www.zhaopin.com"
+        max_pages: 5
+      - name: "前程无忧"
+        enabled: true
+        base_url: "https://www.51job.com"
+        max_pages: 2
+      - name: "Boss直聘"
+        enabled: true
+        base_url: "https://www.zhipin.com"
+        max_pages: 3
+    
+  # RAG处理模块
+  rag_processing:
+    enabled: true
+    batch_size: 50
+    llm_timeout: 30
+    max_retries: 3
+    
+    # 向量数据库配置
+    vector_db:
+      collection_name: "job_positions"
+      embedding_dimension: 768
+      similarity_threshold: 0.7
+    
+  # 简历匹配模块
+  resume_matching:
+    enabled: true
+    matching_threshold: 0.6
+    max_matches_per_resume: 50
+    enable_semantic_matching: true
+    
+    # 匹配算法配置
+    algorithms:
+      - name: "semantic_matching"
+        weight: 0.6
+        enabled: true
+      - name: "keyword_matching"
+        weight: 0.3
+        enabled: true
+      - name: "skill_matching"
+        weight: 0.1
+        enabled: true
+
+# 性能优化配置
+performance:
+  # 缓存配置
+  caching:
+    enabled: true
+    cache_size: 10000
+    ttl_seconds: 3600
+    
+    # Redis配置(可选)
+    redis:
+      enabled: false
+      host: "localhost"
+      port: 6379
+      db: 0
+      password: null
+    
+  # 并发配置
+  concurrency:
+    max_workers: 10
+    semaphore_limit: 5
+    thread_pool_size: 20
+    
+  # 数据库配置
+  database:
+    connection_pool_size: 20
+    query_timeout: 30
+    batch_insert_size: 1000
+    enable_query_cache: true
+
+# 监控配置
+monitoring:
+  # 指标收集
+  metrics_collection: true
+  real_time_dashboard: true
+  
+  # 告警阈值
+  alert_thresholds:
+    error_rate: 0.1
+    processing_speed: 100  # jobs/minute
+    memory_usage: 0.8
+    cpu_usage: 0.8
+    queue_size: 500
+  
+  # 日志配置
+  logging:
+    level: INFO
+    file_rotation: daily
+    max_file_size: 100MB
+    retention_days: 30
+    
+    # 日志格式
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    
+    # 日志文件路径
+    log_files:
+      main: "logs/integration.log"
+      error: "logs/error.log"
+      performance: "logs/performance.log"
+
+# 错误处理配置
+error_handling:
+  # 全局错误处理
+  global_error_handler: true
+  
+  # 重试策略
+  retry_strategy:
+    max_attempts: 3
+    backoff_factor: 2
+    max_delay: 60
+    
+  # 错误恢复
+  recovery:
+    enable_checkpoint: true
+    checkpoint_interval: 100
+    auto_recovery: true
+    
+  # 错误通知
+  notifications:
+    email_alerts: false
+    webhook_url: null
+    slack_webhook: null
+
+# 安全配置
+security:
+  # 数据加密
+  encryption:
+    enabled: false
+    algorithm: "AES-256"
+    
+  # 访问控制
+  access_control:
+    enable_auth: false
+    api_key_required: false
+    
+  # 数据隐私
+  privacy:
+    anonymize_logs: true
+    data_retention_days: 90
+    
+# 测试配置
+testing:
+  # 测试模式
+  test_mode: false
+  
+  # 模拟数据
+  mock_data:
+    enabled: false
+    job_count: 100
+    
+  # 测试数据库
+  test_database:
+    use_separate_db: true
+    auto_cleanup: true
+
+# 部署配置
+deployment:
+  # 环境配置
+  environment: "development"  # development, staging, production
+  
+  # 容器配置
+  container:
+    image: "resume-system:latest"
+    port: 8000
+    
+  # 健康检查
+  health_check:
+    enabled: true
+    endpoint: "/health"
+    interval: 30
+    timeout: 10
+    
+  # 资源限制
+  resources:
+    memory_limit: "4Gi"
+    cpu_limit: "2"
+    disk_limit: "10Gi"
+
+# 集成测试配置
+integration_tests:
+  # 端到端测试
+  e2e_tests:
+    enabled: true
+    test_data_path: "testdata/"
+    
+  # 性能测试
+  performance_tests:
+    enabled: true
+    load_test_duration: 300  # 5分钟
+    concurrent_users: 10
+    
+  # 回归测试
+  regression_tests:
+    enabled: true
+    baseline_metrics_path: "tests/baseline/"
+
+# 外部服务配置
+external_services:
+  # LLM服务配置
+  llm_service:
+    provider: "zhipu"  # openai, zhipu, local
+    api_key: "0175134f27a040709d7541e14b4db353.V3KP9u8rZ0oQj9s9"  # 智谱AI API密钥
+    model: "glm-4"
+    timeout: 30
+    
+  # 邮件服务配置
+  email_service:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    username: "${EMAIL_USERNAME}"
+    password: "${EMAIL_PASSWORD}"
+    
+  # 通知服务配置
+  notification_service:
+    enabled: false
+    webhook_url: "${WEBHOOK_URL}"
+
+# 数据备份配置
+backup:
+  # 自动备份
+  auto_backup: true
+  backup_interval: "daily"  # hourly, daily, weekly
+  
+  # 备份存储
+  storage:
+    type: "local"  # local, s3, gcs
+    path: "backups/"
+    
+  # 备份保留
+  retention:
+    daily_backups: 7
+    weekly_backups: 4
+    monthly_backups: 12
+
+# 版本控制
+version:
+  system_version: "1.0.0"
+  config_version: "1.0.0"
+  last_updated: "2025-08-22"
+  
+# 许可证信息
+license:
+  type: "MIT"
+  owner: "Resume System Team"
+  year: 2025

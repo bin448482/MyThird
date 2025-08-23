@@ -47,8 +47,8 @@ class BehaviorSimulator:
         """
         if self.anti_bot_config.get('random_delay', True):
             delay = random.uniform(min_seconds, max_seconds)
-            self.logger.debug(f"随机延迟 {delay:.2f} 秒")
-            time.sleep(delay)
+            self.logger.debug(f"随机延迟 {delay:.2f} 秒 - COMMENTED FOR SPEED")
+            # time.sleep(delay)
     
     def simulate_human_mouse_move(self, element, offset: Tuple[int, int] = (0, 0)) -> None:
         """
@@ -97,8 +97,8 @@ class BehaviorSimulator:
             actions.move_to_element_with_offset(element, offset[0], offset[1])
             actions.perform()
             
-            # 短暂停留
-            time.sleep(random.uniform(0.1, 0.3))
+            # 短暂停留 - COMMENTED FOR SPEED
+            # time.sleep(random.uniform(0.1, 0.3))
             
         except Exception as e:
             self.logger.warning(f"模拟鼠标移动失败: {e}")
@@ -132,7 +132,7 @@ class BehaviorSimulator:
                 
                 # 随机停顿
                 pause_time = random.uniform(0.1, 0.5)
-                time.sleep(pause_time)
+                # time.sleep(pause_time)  # COMMENTED FOR SPEED
                 
                 # 偶尔反向滚动一点（模拟用户调整）
                 if random.random() < 0.2:
@@ -140,7 +140,7 @@ class BehaviorSimulator:
                     if direction == 'down':
                         reverse_distance = -reverse_distance
                     self.driver.execute_script(f"window.scrollBy(0, {reverse_distance});")
-                    time.sleep(random.uniform(0.1, 0.3))
+                    # time.sleep(random.uniform(0.1, 0.3))  # COMMENTED FOR SPEED
             
             self.logger.debug(f"模拟滚动: {direction} {distance}px")
             
@@ -161,8 +161,8 @@ class BehaviorSimulator:
         # 限制最大阅读时间
         reading_time = min(reading_time, 3.0)  # 从10.0减少到3.0
         
-        self.logger.debug(f"模拟阅读停顿: {reading_time:.2f} 秒")
-        time.sleep(reading_time)
+        self.logger.debug(f"模拟阅读停顿: {reading_time:.2f} 秒 - COMMENTED FOR SPEED")
+        # time.sleep(reading_time)
     
     def natural_click(self, element, double_click: bool = False) -> bool:
         """
@@ -179,8 +179,8 @@ class BehaviorSimulator:
             # 先移动鼠标到元素
             self.simulate_human_mouse_move(element)
             
-            # 短暂停顿
-            time.sleep(random.uniform(0.1, 0.3))
+            # 短暂停顿 - COMMENTED FOR SPEED
+            # time.sleep(random.uniform(0.1, 0.3))
             
             # 点击
             actions = ActionChains(self.driver)
@@ -190,8 +190,8 @@ class BehaviorSimulator:
                 actions.click(element)
             actions.perform()
             
-            # 点击后停顿
-            time.sleep(random.uniform(0.2, 0.5))
+            # 点击后停顿 - COMMENTED FOR SPEED
+            # time.sleep(random.uniform(0.2, 0.5))
             
             self.logger.debug(f"自然点击元素: {'双击' if double_click else '单击'}")
             return True
@@ -219,10 +219,11 @@ class BehaviorSimulator:
                     self.simulate_scroll(direction, random.randint(100, 300))  # 减少滚动距离
                     
                 elif action == 'pause':
-                    time.sleep(random.uniform(0.2, 0.8))  # 减少暂停时间
-                
-                # 优化：减少随机停顿时间
-                time.sleep(random.uniform(0.2, 0.5))
+                    # time.sleep(random.uniform(0.2, 0.8))  # 减少暂停时间 - COMMENTED FOR SPEED
+                    pass
+
+                # 优化：减少随机停顿时间 - COMMENTED FOR SPEED
+                # time.sleep(random.uniform(0.2, 0.5))
             
             self.logger.debug(f"页面探索完成: {duration} 秒")
             
@@ -247,12 +248,12 @@ class BehaviorSimulator:
             
             # 模拟用户等待和观察
             observation_time = random.uniform(1.0, 3.0)
-            time.sleep(observation_time)
+            # time.sleep(observation_time)  # COMMENTED FOR SPEED
             
             # 轻微滚动，模拟用户查看页面
             if random.random() < 0.7:
                 self.simulate_scroll('down', random.randint(100, 300))
-                time.sleep(random.uniform(0.5, 1.0))
+                # time.sleep(random.uniform(0.5, 1.0))  # COMMENTED FOR SPEED
                 self.simulate_scroll('up', random.randint(50, 150))
             
             return True

@@ -667,14 +667,42 @@ class DataStorage:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
-                # 插入或更新职位详细信息
-                cursor.execute("""
-                    INSERT OR REPLACE INTO job_details (
-                        job_id, salary, location, experience, education,
-                        description, requirements, benefits, publish_time,
-                        company_scale, industry, keyword, extracted_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                # 先检查是否已存在，避免重复插入
+                cursor.execute("SELECT id FROM job_details WHERE job_id = ?", (job_id,))
+                existing_record = cursor.fetchone()
+                
+                if existing_record:
+                    # 更新现有记录
+                    cursor.execute("""
+                        UPDATE job_details SET
+                            salary = ?, location = ?, experience = ?, education = ?,
+                            description = ?, requirements = ?, benefits = ?, publish_time = ?,
+                            company_scale = ?, industry = ?, keyword = ?, extracted_at = ?
+                        WHERE job_id = ?
+                    """, (
+                        result.get('salary', ''),
+                        result.get('location', ''),
+                        result.get('experience', ''),
+                        result.get('education', ''),
+                        result.get('description', ''),
+                        result.get('requirements', ''),
+                        result.get('benefits', ''),
+                        result.get('publish_time', ''),
+                        result.get('company_scale', ''),
+                        result.get('industry', ''),
+                        keyword,
+                        result.get('extracted_at', datetime.now().isoformat()),
+                        job_id
+                    ))
+                else:
+                    # 插入新记录
+                    cursor.execute("""
+                        INSERT INTO job_details (
+                            job_id, salary, location, experience, education,
+                            description, requirements, benefits, publish_time,
+                            company_scale, industry, keyword, extracted_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
                     job_id,
                     result.get('salary', ''),
                     result.get('location', ''),

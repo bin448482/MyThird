@@ -77,32 +77,22 @@ class PageParser:
             self.logger.info(f"🔄 开始逐个解析职位元素...")
             
             for i, job_element in enumerate(job_elements, 1):
-                self.logger.info(f"🎯 正在处理第 {i}/{len(job_elements)} 个职位元素")
-                
                 if max_results and processed_count >= max_results:
-                    self.logger.info(f"📊 已达到最大结果数量限制: {max_results}")
                     break
                 
                 try:
-                    self.logger.debug(f"📝 开始解析职位元素 {i}...")
                     job_data = self._parse_job_element(job_element)
-                    self.logger.debug(f"📝 职位元素 {i} 解析完成")
                     
                     if job_data:
                         jobs.append(job_data)
                         processed_count += 1
                         
-                        self.logger.info(
-                            f"✅ 职位 {processed_count}: {job_data.get('title', '未知')} - "
-                            f"{job_data.get('company', '未知')} - {job_data.get('salary', '面议')}"
-                        )
-                    else:
-                        self.logger.warning(f"⚠️ 职位元素 {i} 解析结果为空")
+                        # 只在每10个职位时输出一次进度
+                        if processed_count % 10 == 0 or processed_count <= 5:
+                            self.logger.info(f"✅ 已处理 {processed_count} 个职位")
                     
                 except Exception as e:
-                    self.logger.error(f"❌ 解析职位 {i} 时出错: {e}")
-                    import traceback
-                    self.logger.error(f"错误详情: {traceback.format_exc()}")
+                    self.logger.warning(f"❌ 解析职位 {i} 失败: {str(e)[:50]}...")
                     continue
             
             self.logger.info(f"✅ 职位列表解析完成，共解析 {len(jobs)} 个职位")
@@ -112,27 +102,22 @@ class PageParser:
             self.logger.error(f"❌ 解析职位列表失败: {e}")
             raise PageParseError(f"解析职位列表失败: {e}")
     
-    def _wait_for_page_stable(self, driver: webdriver.Chrome, timeout: int = 10) -> None:
+    def _wait_for_page_stable(self, driver: webdriver.Chrome, timeout: int = 3) -> None:
         """
-        等待页面稳定加载（优化版本）
+        等待页面稳定加载（超快速版本）
         
         Args:
             driver: WebDriver实例
-            timeout: 超时时间
+            timeout: 超时时间（默认3秒）
         """
         try:
-            # 等待页面加载完成
+            # 大幅减少超时时间，快速失败
             WebDriverWait(driver, timeout).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
-            
-            # 优化：减少额外等待时间
-            time.sleep(0.5)  # 从2秒减少到0.5秒
-            
-            self.logger.debug("页面已稳定加载")
-            
         except TimeoutException:
-            self.logger.warning("页面加载超时，继续尝试解析")
+            # 快速失败，不记录详细日志
+            pass
     
     def _get_job_elements(self, driver: webdriver.Chrome) -> List:
         """
@@ -208,184 +193,124 @@ class PageParser:
     
     def _parse_job_element(self, job_element) -> Optional[Dict[str, Any]]:
         """
-        解析单个职位元素
-        
-        Args:
-            job_element: 职位元素
-            
-        Returns:
-            职位数据字典
+        解析单个职位元素（高性能版本）
         """
-        self.logger.debug("🔍 开始解析职位元素...")
-        
-        job_data = {
-            'extracted_at': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'source': 'qiancheng'
-        }
-        
         try:
-            # 职位标题
-            self.logger.debug("📝 提取职位标题...")
-            job_title = self._extract_title(job_element)
-            job_data.update({
-                'title': job_title,
-                'url': "",  # URL需要通过点击获取
+            job_data = {
+                'extracted_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+                'source': 'qiancheng',
+                'url': "",
                 'needs_click_extraction': True
-            })
-            self.logger.debug(f"📝 标题提取完成: {job_title}")
+            }
             
-            # 公司名称
-            self.logger.debug("🏢 提取公司名称...")
-            job_data['company'] = self._extract_text_by_selector(
-                job_element,
-                self.search_selectors.get('company_name', '.cname'),
-                default="未知公司"
-            )
-            self.logger.debug(f"🏢 公司名称: {job_data['company']}")
+            # 快速提取标题
+            job_data['title'] = self._extract_title_fast(job_element)
             
-            # 薪资
-            self.logger.debug("💰 提取薪资信息...")
-            job_data['salary'] = self._extract_text_by_selector(
-                job_element,
-                self.search_selectors.get('salary', '.sal'),
-                default="薪资面议"
-            )
-            self.logger.debug(f"💰 薪资: {job_data['salary']}")
-            
-            # 地点
-            self.logger.debug("📍 提取地点信息...")
-            job_data['location'] = self._extract_text_by_selector(
-                job_element,
-                self.search_selectors.get('location', '.area'),
-                default="未知地点"
-            )
-            self.logger.debug(f"📍 地点: {job_data['location']}")
-            
-            # 经验要求
-            self.logger.debug("🎓 提取经验要求...")
-            job_data['experience'] = self._extract_text_by_selector(
-                job_element,
-                self.search_selectors.get('experience', '.experience'),
-                default="经验不限"
-            )
-            self.logger.debug(f"🎓 经验: {job_data['experience']}")
-            
-            # 学历要求
-            self.logger.debug("📚 提取学历要求...")
-            job_data['education'] = self._extract_text_by_selector(
-                job_element,
-                self.search_selectors.get('education', '.education'),
-                default="学历不限"
-            )
-            self.logger.debug(f"📚 学历: {job_data['education']}")
-            
-            # 提取额外信息
-            self.logger.debug("ℹ️ 提取额外信息...")
-            extra_info = self._extract_extra_info(job_element)
-            job_data.update(extra_info)
-            self.logger.debug("ℹ️ 额外信息提取完成")
+            # 快速批量提取字段
+            field_data = self._extract_multiple_fields_fast(job_element)
+            job_data.update(field_data)
             
             # 生成职位指纹
-            self.logger.debug("🔍 生成职位指纹...")
-            job_fingerprint = generate_job_fingerprint(
+            job_data['job_fingerprint'] = generate_job_fingerprint(
                 job_data.get('title', ''),
                 job_data.get('company', ''),
                 job_data.get('salary', ''),
                 job_data.get('location', '')
             )
-            job_data['job_fingerprint'] = job_fingerprint
-            self.logger.debug(f"🔍 职位指纹: {job_fingerprint}")
             
-            self.logger.debug("✅ 职位元素解析完成")
             return job_data
             
         except Exception as e:
-            self.logger.error(f"❌ 解析职位元素失败: {e}")
-            import traceback
-            self.logger.error(f"错误详情: {traceback.format_exc()}")
             return None
     
-    def _extract_title(self, job_element) -> str:
-        """
-        提取职位标题
-        
-        Args:
-            job_element: 职位元素
-            
-        Returns:
-            职位标题字符串
-        """
+    def _extract_title_fast(self, job_element) -> str:
+        """快速提取职位标题"""
         try:
-            # 从配置中获取职位标题选择器
-            title_selector = self.search_selectors.get('job_title', '.jname a')
-            
-            # 尝试提取职位标题
-            try:
-                # 首先尝试配置的选择器
-                title_element = job_element.find_element(By.CSS_SELECTOR, title_selector)
-                job_title = title_element.text.strip()
-                
-                # 如果文本为空，尝试title属性
-                if not job_title:
-                    job_title = title_element.get_attribute('title')
-                    if job_title:
-                        job_title = job_title.strip()
-                
-                if job_title:
-                    self.logger.debug(f"通过配置选择器找到职位标题: {job_title}")
-                    return job_title
-                    
-            except Exception as e:
-                self.logger.debug(f"配置选择器 '{title_selector}' 未找到元素: {e}")
-            
-            # 如果配置选择器失败，尝试51job的具体选择器
-            fallback_selectors = ['.jname', '.jname a', '.job-title', '.position-title']
-            
-            for selector in fallback_selectors:
+            # 直接尝试最常用的选择器
+            for selector in ['.jname a', '.jname', '.job-title']:
                 try:
-                    title_element = job_element.find_element(By.CSS_SELECTOR, selector)
-                    job_title = title_element.text.strip()
-                    
-                    if not job_title:
-                        job_title = title_element.get_attribute('title')
-                        if job_title:
-                            job_title = job_title.strip()
-                    
-                    if job_title:
-                        self.logger.debug(f"通过备用选择器 '{selector}' 找到职位标题: {job_title}")
-                        return job_title
-                        
-                except Exception:
+                    element = job_element.find_element(By.CSS_SELECTOR, selector)
+                    text = element.text.strip()
+                    if text:
+                        return text
+                    # 尝试title属性
+                    title = element.get_attribute('title')
+                    if title:
+                        return title.strip()
+                except:
                     continue
-            
-            # 如果都没找到，返回默认值
-            self.logger.warning("未找到职位标题")
             return "未知职位"
-                
-        except Exception as e:
-            self.logger.warning(f"提取职位标题失败: {e}")
+        except:
             return "未知职位"
     
+    def _extract_title(self, job_element) -> str:
+        """保留原方法以兼容性"""
+        return self._extract_title_fast(job_element)
+    
     def _extract_text_by_selector(self, parent_element, selector: str, default: str = "") -> str:
-        """
-        通过选择器提取文本（优化版本）
-        
-        Args:
-            parent_element: 父元素
-            selector: CSS选择器
-            default: 默认值
-            
-        Returns:
-            提取的文本
-        """
+        """通过选择器提取文本（超快速版本）"""
         try:
-            # 添加超时机制，避免长时间等待
             element = parent_element.find_element(By.CSS_SELECTOR, selector)
             text = element.text.strip()
             return text if text else default
-        except Exception:
-            # 快速失败，不记录详细错误信息
+        except:
             return default
+    
+    def _extract_multiple_fields_fast(self, job_element) -> Dict[str, str]:
+        """超高性能批量提取 - 一次性查找所有元素"""
+        try:
+            # 一次性查找所有可能的元素，避免重复DOM查询
+            all_elements = job_element.find_elements(By.CSS_SELECTOR,
+                '.cname a, .cname, .area, .sal, .experience, .education')
+            
+            # 预设默认值
+            results = {
+                'company': "未知公司",
+                'location': "未知地点",
+                'salary': "薪资面议",
+                'experience': "经验不限",
+                'education': "学历不限"
+            }
+            
+            # 遍历找到的元素，根据类名快速分类
+            for element in all_elements:
+                try:
+                    classes = element.get_attribute('class') or ''
+                    text = element.text.strip()
+                    if not text:
+                        text = element.get_attribute('title') or ''
+                        text = text.strip()
+                    
+                    if not text:
+                        continue
+                    
+                    # 快速分类匹配
+                    if 'cname' in classes and results['company'] == "未知公司":
+                        results['company'] = text
+                    elif 'area' in classes and results['location'] == "未知地点":
+                        results['location'] = text
+                    elif 'sal' in classes and results['salary'] == "薪资面议":
+                        results['salary'] = text
+                    elif 'experience' in classes and results['experience'] == "经验不限":
+                        results['experience'] = text
+                    elif 'education' in classes and results['education'] == "学历不限":
+                        results['education'] = text
+                        
+                except:
+                    continue
+            
+            return results
+            
+        except:
+            return {
+                'company': "未知公司",
+                'location': "未知地点",
+                'salary': "薪资面议",
+                'experience': "经验不限",
+                'education': "学历不限"
+            }
+
+    
     
     def _extract_extra_info(self, job_element) -> Dict[str, Any]:
         """
@@ -430,16 +355,8 @@ class PageParser:
         try:
             self.logger.info(f"📄 解析职位详情: {job_url}")
             
-            # 根据模式调整详情页等待时间
-            config_mode = getattr(self, 'config', {}).get('mode', {})
-            is_debug_mode = config_mode.get('development', False) or config_mode.get('debug', False)
-            
-            if is_debug_mode:
-                # 开发模式：快速等待
-                self._wait_for_page_stable(driver, timeout=3)  # 开发模式3秒
-            else:
-                # 生产模式：正常等待
-                self._wait_for_page_stable(driver, timeout=6)  # 生产模式6秒
+            # 统一使用快速等待，不区分模式
+            self._wait_for_page_stable(driver, timeout=2)  # 统一2秒快速等待
             
             # 检查页面是否正常加载
             page_title = driver.title
@@ -605,10 +522,13 @@ class PageParser:
         try:
             # 尝试多种下一页按钮选择器
             next_page_selectors = [
-                self.search_selectors.get('next_page', '.btn_next'),
-                '.next-page',
+                self.search_selectors.get('next_page', '.btn-next'),  # 修正默认值
+                '.btn-next',           # 51job实际使用的选择器
+                'button.btn-next',     # 更具体的按钮选择器
+                '.btn_next',           # 旧版本选择器
+                '.next',
                 '.page-next',
-                '.btn-next',
+                '.next-page',
                 '.pager-next',
                 'a[title*="下一页"]',
                 'a[title*="next"]',
@@ -617,6 +537,8 @@ class PageParser:
                 '.page-item.next a',
                 '.page-link[aria-label*="Next"]'
             ]
+            
+            self.logger.debug(f"🔍 检查下一页按钮，优先使用: {next_page_selectors[0]}")
             
             for selector in next_page_selectors:
                 try:
@@ -647,7 +569,7 @@ class PageParser:
     
     def navigate_to_next_page(self, driver: webdriver.Chrome) -> bool:
         """
-        导航到下一页
+        导航到下一页 - 增强版AJAX检测
         
         Args:
             driver: WebDriver实例
@@ -658,22 +580,16 @@ class PageParser:
         try:
             self.logger.info("🔄 尝试导航到下一页")
             
-            # 记录当前页面URL用于验证
+            # 记录当前页面状态用于验证
             current_url = driver.current_url
+            current_page_signature = self._get_page_content_signature(driver)
             
             # 尝试多种下一页按钮选择器
             next_page_selectors = [
-                self.search_selectors.get('next_page', '.btn_next'),
-                '.next-page',
-                '.page-next',
-                '.btn-next',
-                '.pager-next',
-                'a[title*="下一页"]',
-                'a[title*="next"]',
-                '.pagination .next',
-                '.pagination-next',
-                '.page-item.next a',
-                '.page-link[aria-label*="Next"]'
+                'button.btn-next',      # 51job主要选择器
+                '.btn-next',            # 备用选择器
+                '.next',                # 通用选择器
+                '.page-next'            # 另一种可能
             ]
             
             for selector in next_page_selectors:
@@ -690,32 +606,13 @@ class PageParser:
                             
                             # 滚动到按钮位置
                             driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", next_button)
-                            time.sleep(random.uniform(0.5, 1.0))
-                            
-                            # 模拟人类点击行为
-                            if random.random() < 0.3:  # 30%概率先悬停
-                                ActionChains(driver).move_to_element(next_button).perform()
-                                time.sleep(random.uniform(0.2, 0.5))
+                            time.sleep(0.3)  # 短暂等待滚动完成
                             
                             # 点击下一页按钮
                             ActionChains(driver).click(next_button).perform()
                             
-                            # 等待页面加载
-                            wait_time = random.uniform(2.0, 4.0)
-                            time.sleep(wait_time)
-                            
-                            # 等待页面稳定
-                            self._wait_for_page_stable(driver, timeout=10)
-                            
-                            # 验证是否成功跳转到下一页
-                            new_url = driver.current_url
-                            if new_url != current_url:
-                                self.logger.info(f"✅ 成功导航到下一页: {new_url}")
-                                return True
-                            else:
-                                # URL没变，可能是AJAX加载，检查页面内容是否变化
-                                time.sleep(1.0)
-                                self.logger.info("✅ 页面内容已更新（AJAX加载）")
+                            # 验证页面跳转是否成功
+                            if self._verify_page_navigation(driver, current_url, current_page_signature):
                                 return True
                     
                 except NoSuchElementException:
@@ -729,6 +626,152 @@ class PageParser:
             
         except Exception as e:
             self.logger.error(f"❌ 导航到下一页失败: {e}")
+            return False
+    
+    def _get_page_content_signature(self, driver: webdriver.Chrome) -> str:
+        """
+        获取页面内容签名，用于检测AJAX更新
+        
+        Args:
+            driver: WebDriver实例
+            
+        Returns:
+            页面内容签名字符串
+        """
+        try:
+            # 获取职位列表的关键信息作为签名
+            signature_data = driver.execute_script("""
+                // 获取职位列表的关键信息
+                var jobElements = document.querySelectorAll('.joblist-item, .job-item');
+                var signatures = [];
+                
+                for (var i = 0; i < Math.min(jobElements.length, 5); i++) {
+                    var job = jobElements[i];
+                    var title = '';
+                    var company = '';
+                    
+                    // 提取职位标题
+                    var titleEl = job.querySelector('.jname a, .jname, .job-title');
+                    if (titleEl) title = titleEl.textContent.trim();
+                    
+                    // 提取公司名称
+                    var companyEl = job.querySelector('.cname a, .cname, .company');
+                    if (companyEl) company = companyEl.textContent.trim();
+                    
+                    if (title || company) {
+                        signatures.push(title + '|' + company);
+                    }
+                }
+                
+                return signatures.join('::');
+            """)
+            
+            return str(signature_data) if signature_data else ""
+            
+        except Exception as e:
+            self.logger.debug(f"获取页面签名失败: {e}")
+            return ""
+    
+    def _verify_page_navigation(self, driver: webdriver.Chrome, original_url: str, original_signature: str) -> bool:
+        """
+        验证页面导航是否成功
+        
+        Args:
+            driver: WebDriver实例
+            original_url: 原始URL
+            original_signature: 原始页面签名
+            
+        Returns:
+            是否成功导航
+        """
+        max_attempts = 10  # 最多检查10次
+        wait_interval = 0.5  # 每次等待0.5秒
+        
+        for attempt in range(max_attempts):
+            try:
+                # 等待一小段时间让页面更新
+                time.sleep(wait_interval)
+                
+                # 检查URL是否变化
+                current_url = driver.current_url
+                if current_url != original_url:
+                    self.logger.info(f"✅ URL已变化，成功导航到下一页: {current_url}")
+                    return True
+                
+                # 检查页面内容是否变化（AJAX情况）
+                current_signature = self._get_page_content_signature(driver)
+                if current_signature and current_signature != original_signature:
+                    self.logger.info("✅ 页面内容已更新（AJAX加载）")
+                    # 额外验证：检查是否有新的职位元素
+                    if self._verify_new_job_content(driver):
+                        return True
+                
+                # 检查页面是否正在加载
+                if self._is_page_loading(driver):
+                    self.logger.debug(f"页面正在加载中... (尝试 {attempt + 1}/{max_attempts})")
+                    continue
+                
+            except Exception as e:
+                self.logger.debug(f"验证页面导航时出错 (尝试 {attempt + 1}): {e}")
+                continue
+        
+        self.logger.warning("⚠️ 页面导航验证失败，内容可能未更新")
+        return False
+    
+    def _verify_new_job_content(self, driver: webdriver.Chrome) -> bool:
+        """
+        验证是否有新的职位内容加载
+        
+        Args:
+            driver: WebDriver实例
+            
+        Returns:
+            是否有新内容
+        """
+        try:
+            # 检查职位列表是否存在且有内容
+            job_elements = driver.find_elements(By.CSS_SELECTOR, '.joblist-item, .job-item')
+            if len(job_elements) > 0:
+                # 检查第一个职位是否有有效内容
+                first_job = job_elements[0]
+                title_element = first_job.find_element(By.CSS_SELECTOR, '.jname a, .jname, .job-title')
+                if title_element and title_element.text.strip():
+                    self.logger.debug(f"验证成功：找到 {len(job_elements)} 个职位，第一个职位: {title_element.text.strip()}")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"验证新职位内容失败: {e}")
+            return False
+    
+    def _is_page_loading(self, driver: webdriver.Chrome) -> bool:
+        """
+        检查页面是否正在加载
+        
+        Args:
+            driver: WebDriver实例
+            
+        Returns:
+            是否正在加载
+        """
+        try:
+            # 检查页面加载状态
+            ready_state = driver.execute_script("return document.readyState")
+            if ready_state != "complete":
+                return True
+            
+            # 检查是否有加载指示器
+            loading_indicators = driver.find_elements(By.CSS_SELECTOR,
+                '.loading, .spinner, .loader, [class*="loading"], [class*="spinner"]')
+            
+            for indicator in loading_indicators:
+                if indicator.is_displayed():
+                    return True
+            
+            return False
+            
+        except Exception:
             return False
     
     def get_current_page_info(self, driver: webdriver.Chrome) -> Dict[str, Any]:
@@ -768,21 +811,78 @@ class PageParser:
                     except (ValueError, IndexError):
                         continue
             
-            # 尝试从页面元素中获取页码信息 - 使用最常见的选择器
+            # 尝试从页面元素中获取页码信息 - 针对51job优化
             try:
-                page_element = driver.find_element(By.CSS_SELECTOR, '.pagination .active')
-                page_text = page_element.text.strip()
-                if page_text.isdigit():
-                    page_info['current_page'] = int(page_text)
-            except:
-                # 如果失败，尝试51job的页码选择器
-                try:
-                    page_element = driver.find_element(By.CSS_SELECTOR, '.current-page')
-                    page_text = page_element.text.strip()
-                    if page_text.isdigit():
-                        page_info['current_page'] = int(page_text)
-                except:
-                    pass
+                # 51job的页码选择器 - 尝试多种可能的选择器
+                page_selectors = [
+                    '.pagination .current',      # 当前页高亮
+                    '.pagination .active',       # 激活页面
+                    '.page-current',             # 当前页
+                    '.current-page',             # 当前页
+                    '.pagination .on',           # 51job可能使用的类名
+                    '.page-num.current',         # 页码当前状态
+                    '.pager .current',           # 分页器当前页
+                    '.page-item.active span',    # Bootstrap样式
+                    '.pagination li.active span' # 另一种Bootstrap样式
+                ]
+                
+                for selector in page_selectors:
+                    try:
+                        page_element = driver.find_element(By.CSS_SELECTOR, selector)
+                        page_text = page_element.text.strip()
+                        if page_text.isdigit():
+                            page_info['current_page'] = int(page_text)
+                            self.logger.debug(f"通过选择器 '{selector}' 检测到当前页码: {page_text}")
+                            break
+                    except:
+                        continue
+                
+                # 如果上述方法都失败，尝试JavaScript获取页码
+                if page_info['current_page'] == 1:
+                    try:
+                        current_page_js = driver.execute_script("""
+                            // 尝试多种方式获取当前页码
+                            var selectors = [
+                                '.pagination .current',
+                                '.pagination .active',
+                                '.page-current',
+                                '.current-page',
+                                '.pagination .on',
+                                '.page-num.current'
+                            ];
+                            
+                            for (var i = 0; i < selectors.length; i++) {
+                                var element = document.querySelector(selectors[i]);
+                                if (element && element.textContent) {
+                                    var pageNum = parseInt(element.textContent.trim());
+                                    if (!isNaN(pageNum) && pageNum > 0) {
+                                        return pageNum;
+                                    }
+                                }
+                            }
+                            
+                            // 尝试从URL参数中获取页码
+                            var urlParams = new URLSearchParams(window.location.search);
+                            var pageParam = urlParams.get('page') || urlParams.get('p') || urlParams.get('pageNum');
+                            if (pageParam) {
+                                var pageNum = parseInt(pageParam);
+                                if (!isNaN(pageNum) && pageNum > 0) {
+                                    return pageNum;
+                                }
+                            }
+                            
+                            return 1;
+                        """)
+                        
+                        if current_page_js and current_page_js > 1:
+                            page_info['current_page'] = current_page_js
+                            self.logger.debug(f"通过JavaScript检测到当前页码: {current_page_js}")
+                            
+                    except Exception as e:
+                        self.logger.debug(f"JavaScript页码检测失败: {e}")
+                        
+            except Exception as e:
+                self.logger.debug(f"页码检测失败: {e}")
             
             return page_info
             

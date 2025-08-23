@@ -1,0 +1,35 @@
+{
+  "report_id": "report_1755874790",
+  "start_time": "2025-08-22T21:59:50.322943",
+  "end_time": "2025-08-22T22:59:50.322943",
+  "pipeline_stats": {
+    "total_pipelines_executed": 1,
+    "successful_pipelines": 1,
+    "failed_pipelines": 0,
+    "average_execution_time": 105.548324,
+    "last_execution_time": 105.548324
+  },
+  "system_stats": {
+    "system_cpu_usage": {
+      "count": 1,
+      "min": 0.214,
+      "max": 0.214,
+      "avg": 0.214,
+      "latest": 0.214,
+      "first": 0.214
+    },
+    "system_memory_usage": {
+      "count": 1,
+      "min": 0.445,
+      "max": 0.445,
+      "avg": 0.445,
+      "latest": 0.445,
+      "first": 0.445
+    }
+  },
+  "error_stats": {},
+  "recommendations": [
+    "系统运行正常，无特殊优化建议"
+  ],
+  "generated_at": "2025-08-22T22:59:50.322969"
+}

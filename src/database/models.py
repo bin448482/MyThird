@@ -111,6 +111,28 @@ class DatabaseSchema:
     )
     """
     
+    # 简历匹配结果表
+    RESUME_MATCHES_TABLE = """
+    CREATE TABLE IF NOT EXISTS resume_matches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id VARCHAR(100) NOT NULL,
+        resume_profile_id VARCHAR(100),
+        match_score FLOAT NOT NULL,
+        priority_level VARCHAR(20) NOT NULL,
+        semantic_score FLOAT,
+        skill_match_score FLOAT,
+        experience_match_score FLOAT,
+        location_match_score FLOAT,
+        salary_match_score FLOAT,
+        match_details TEXT,
+        match_reasons TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        processed BOOLEAN DEFAULT FALSE,
+        processed_at TIMESTAMP,
+        FOREIGN KEY (job_id) REFERENCES jobs (job_id)
+    )
+    """
+    
     # 日志表
     LOGS_TABLE = """
     CREATE TABLE IF NOT EXISTS logs (
@@ -135,6 +157,12 @@ class DatabaseSchema:
         "CREATE INDEX IF NOT EXISTS idx_jobs_semantic_score ON jobs(semantic_score)",
         "CREATE INDEX IF NOT EXISTS idx_job_details_job_id ON job_details(job_id)",
         "CREATE INDEX IF NOT EXISTS idx_job_details_keyword ON job_details(keyword)",
+        "CREATE INDEX IF NOT EXISTS idx_resume_matches_job_id ON resume_matches(job_id)",
+        "CREATE INDEX IF NOT EXISTS idx_resume_matches_profile_id ON resume_matches(resume_profile_id)",
+        "CREATE INDEX IF NOT EXISTS idx_resume_matches_score ON resume_matches(match_score)",
+        "CREATE INDEX IF NOT EXISTS idx_resume_matches_priority ON resume_matches(priority_level)",
+        "CREATE INDEX IF NOT EXISTS idx_resume_matches_processed ON resume_matches(processed)",
+        "CREATE INDEX IF NOT EXISTS idx_resume_matches_created_at ON resume_matches(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp)",
         "CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level)"
     ]
@@ -145,6 +173,7 @@ class DatabaseSchema:
         return [
             cls.JOBS_TABLE,
             cls.JOB_DETAILS_TABLE,
+            cls.RESUME_MATCHES_TABLE,
             cls.LOGS_TABLE
         ]
     

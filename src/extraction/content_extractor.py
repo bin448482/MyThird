@@ -142,11 +142,11 @@ class ContentExtractor:
                 try:
                     self.logger.info(f"📝 提取职位详情 {i}/{len(shuffled_urls)}: {job_url}")
                     
-                    # 详情页：延长等待时间，避免反爬检测
-                    if self.behavior_simulator:
-                        self.behavior_simulator.random_delay(1.0, 5.0)  # 详情页延长到2-5秒
-                    else:
-                        time.sleep(random.uniform(3.0, 8.0))  # 详情页延长到3-8秒
+                    # 详情页：延长等待时间，避免反爬检测 - COMMENTED FOR SPEED
+                    # if self.behavior_simulator:
+                    #     self.behavior_simulator.random_delay(1.0, 5.0)  # 详情页延长到2-5秒
+                    # else:
+                    #     time.sleep(random.uniform(3.0, 8.0))  # 详情页延长到3-8秒
                     
                     # 使用简化的详情页解析
                     detail = self._extract_job_detail_simplified(driver, job_url)
@@ -158,20 +158,20 @@ class ContentExtractor:
                         if success:
                             self.logger.debug(f"💾 职位详情已保存到数据库: {detail.get('title', '')}")
                         
-                        # 详情页：增加阅读时间模拟
-                        if self.behavior_simulator and random.random() < 0.6:  # 增加到60%概率模拟阅读
-                            self.behavior_simulator.random_delay(1.0, 3.0)  # 延长阅读时间
+                        # 详情页：增加阅读时间模拟 - COMMENTED FOR SPEED
+                        # if self.behavior_simulator and random.random() < 0.6:  # 增加到60%概率模拟阅读
+                        #     self.behavior_simulator.random_delay(1.0, 3.0)  # 延长阅读时间
                     
-                    # 详情页：适当增加休息时间
-                    if i % random.randint(5, 8) == 0:  # 详情页休息频率适中
-                        rest_time = random.uniform(4.0, 8.0)  # 详情页休息时间延长
-                        self.logger.info(f"⏳ 模拟用户休息 {rest_time:.1f} 秒...")
-                        time.sleep(rest_time)
+                    # 详情页：适当增加休息时间 - COMMENTED FOR SPEED
+                    # if i % random.randint(5, 8) == 0:  # 详情页休息频率适中
+                    #     rest_time = random.uniform(4.0, 8.0)  # 详情页休息时间延长
+                    #     self.logger.info(f"⏳ 模拟用户休息 {rest_time:.1f} 秒...")
+                    #     time.sleep(rest_time)
                     
                 except Exception as e:
                     self.logger.warning(f"⚠️ 提取职位详情失败 {job_url}: {e}")
-                    # 详情页失败后延长等待时间
-                    time.sleep(random.uniform(10.0, 25.0))  # 从5-15秒延长到10-25秒
+                    # 详情页失败后延长等待时间 - COMMENTED FOR SPEED
+                    # time.sleep(random.uniform(10.0, 25.0))  # 从5-15秒延长到10-25秒
                     continue
             
             self.logger.info(f"✅ 职位详情提取完成，共提取 {len(details)} 个详情，跳过重复 {skipped_count} 个")
@@ -196,8 +196,8 @@ class ContentExtractor:
             # 直接导航，减少复杂的模拟
             driver.get(job_url)
             
-            # 详情页：延长等待时间
-            time.sleep(random.uniform(2.0, 4.0))  # 从1-2.5秒延长到2-4秒
+            # 详情页：延长等待时间 - COMMENTED FOR SPEED
+            # time.sleep(random.uniform(2.0, 4.0))  # 从1-2.5秒延长到2-4秒
             
             # 检查是否被重定向或阻止
             current_url = driver.current_url
@@ -208,7 +208,7 @@ class ContentExtractor:
             # 简化的页面交互：只做基本滚动
             if self.behavior_simulator and random.random() < 0.5:  # 50%概率进行简单滚动
                 self.behavior_simulator.simulate_scroll('down', random.randint(300, 500))
-                time.sleep(random.uniform(0.5, 1.0))
+                # time.sleep(random.uniform(0.5, 1.0))  # COMMENTED FOR SPEED
                 driver.execute_script("window.scrollTo(0, 0);")
             
             # 解析页面内容
@@ -510,8 +510,8 @@ class ContentExtractor:
                 wait = self.browser_manager.create_wait(5)
                 wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
                 
-                # 调试模式不需要额外等待
-                time.sleep(0.2)
+                # 调试模式不需要额外等待 - COMMENTED FOR SPEED
+                # time.sleep(0.2)
                 
             elif self.behavior_simulator and random.random() < 0.2:  # 只有20%概率使用复杂导航
                 # 生产模式：偶尔使用自然导航
@@ -521,7 +521,7 @@ class ContentExtractor:
                     driver.get(url)
                     wait = self.browser_manager.create_wait(8)
                     wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
-                    time.sleep(random.uniform(0.5, 1.0))
+                    # time.sleep(random.uniform(0.5, 1.0))  # COMMENTED FOR SPEED
             else:
                 # 标准导航方式
                 driver.get(url)
@@ -530,8 +530,8 @@ class ContentExtractor:
                 wait = self.browser_manager.create_wait(8)  # 从20秒减少到8秒
                 wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
                 
-                # 大幅减少额外等待时间
-                time.sleep(random.uniform(0.3, 1.0))  # 从3秒减少到0.3-1秒
+                # 大幅减少额外等待时间 - COMMENTED FOR SPEED
+                # time.sleep(random.uniform(0.3, 1.0))  # 从3秒减少到0.3-1秒
             
             self.logger.info("✅ 页面导航完成")
             
@@ -633,8 +633,8 @@ class ContentExtractor:
                     
                     # 添加延迟（除了最后一个关键词）
                     if i < len(keywords):
-                        self.logger.info(f"⏳ 等待 {delay_between_keywords} 秒后处理下一个关键词...")
-                        time.sleep(delay_between_keywords)
+                        self.logger.info(f"⏳ 等待 {delay_between_keywords} 秒后处理下一个关键词... - COMMENTED FOR SPEED")
+                        # time.sleep(delay_between_keywords)
                     
                 except Exception as e:
                     self.logger.error(f"❌ 处理关键词 '{keyword}' 失败: {e}")
@@ -710,158 +710,6 @@ class ContentExtractor:
         """上下文管理器出口"""
         self.close()
     
-    def extract_from_search_url(self,
-                               search_url: str,
-                               keyword: Optional[str] = None,
-                               max_results: Optional[int] = None,
-                               save_results: bool = True,
-                               extract_details: bool = False,
-                               max_pages: Optional[int] = None) -> List[Dict[str, Any]]:
-        """
-        从搜索URL提取职位信息（正确的工作流程）
-        
-        正确的工作流程：
-        for each_page:
-            1. 进入列表页面（第N页）
-            2. 解析当前页面的职位列表信息
-            3. 为每个职位生成指纹
-            4. 与数据库中的指纹匹配，过滤已存在的职位
-            5. 对于新职位，立即点击进入详情页获取详情信息
-            6. 使用指纹作为唯一标识，合并列表信息和详情信息
-            7. 将合并后的完整职位信息保存到数据库
-            8. 检查是否有下一页，如有则跳转到下一页
-            9. 重复步骤1-8直到所有页面处理完成
-        
-        Args:
-            search_url: 搜索页面URL
-            keyword: 搜索关键词（用于记录）
-            max_results: 最大结果数量
-            save_results: 是否保存结果
-            extract_details: 是否提取详情页内容
-            max_pages: 最大页数
-            
-        Returns:
-            提取的职位信息列表
-        """
-        try:
-            self.logger.info(f"🚀 开始从搜索URL提取职位信息: {search_url}")
-            self.logger.info(f"📊 参数: 关键词='{keyword}', 最大结果={max_results}, 最大页数={max_pages}, 提取详情={extract_details}")
-            
-            # 设置当前关键词和开始时间
-            self.current_keyword = keyword or self._extract_keyword_from_url(search_url)
-            self.extraction_start_time = time.time()
-            self.extraction_results = []
-            
-            # 准备浏览器
-            driver = self._prepare_browser()
-            
-            # 导航到搜索页面
-            self._navigate_to_page(driver, search_url)
-            
-            # 获取配置参数
-            max_pages = max_pages or self.search_config.get('strategy', {}).get('max_pages', 5)
-            page_delay_min = self.search_config.get('strategy', {}).get('page_delay', 2)
-            page_delay_max = self.search_config.get('strategy', {}).get('page_delay_max', 5)
-            
-            # 主循环：逐页处理
-            current_page = 1
-            total_extracted = 0
-            all_results = []
-            
-            self.logger.info(f"🔄 开始逐页处理，最大页数: {max_pages}")
-            
-            while current_page <= max_pages:
-                try:
-                    self.logger.info(f"📄 处理第 {current_page} 页")
-                    
-                    # 步骤1: 获取当前页面信息
-                    page_info = self.page_parser.get_current_page_info(driver)
-                    self.logger.info(f"📍 当前页面: {page_info.get('current_page', current_page)}")
-                    
-                    # 步骤2: 解析当前页面的职位列表信息
-                    page_jobs = self.page_parser.parse_job_list(driver, max_results)
-                    
-                    if not page_jobs:
-                        self.logger.warning(f"⚠️ 第 {current_page} 页未找到职位信息")
-                        break
-                    
-                    self.logger.info(f"📋 第 {current_page} 页找到 {len(page_jobs)} 个职位")
-                    
-                    # 为每个职位添加页面信息
-                    for job in page_jobs:
-                        job['page_number'] = current_page
-                        job['search_keyword'] = self.current_keyword
-                    
-                    # 步骤3-4: 为每个职位生成指纹并过滤已存在的职位
-                    new_jobs = self._filter_new_jobs_by_fingerprint(page_jobs)
-                    
-                    if not new_jobs:
-                        self.logger.info(f"✅ 第 {current_page} 页所有职位都已存在，跳过详情提取")
-                    else:
-                        self.logger.info(f"🆕 第 {current_page} 页发现 {len(new_jobs)} 个新职位")
-                        
-                        # 步骤5-7: 对新职位立即提取详情并保存
-                        if extract_details:
-                            page_results = self._extract_new_jobs_details_immediately(driver, new_jobs)
-                        else:
-                            # 如果不提取详情，直接保存列表信息
-                            page_results = self._save_list_jobs_immediately(new_jobs)
-                        
-                        all_results.extend(page_results)
-                        total_extracted += len(page_results)
-                        
-                        self.logger.info(f"💾 第 {current_page} 页成功处理 {len(page_results)} 个职位")
-                    
-                    # 检查是否达到最大结果数量
-                    if max_results and total_extracted >= max_results:
-                        self.logger.info(f"📊 已达到最大结果数量限制: {max_results}")
-                        break
-                    
-                    # 步骤8: 检查是否有下一页
-                    if not self.page_parser.has_next_page(driver):
-                        self.logger.info("📄 已到达最后一页")
-                        break
-                    
-                    # 步骤9: 导航到下一页
-                    if current_page < max_pages:
-                        self.logger.info(f"➡️ 准备进入第 {current_page + 1} 页")
-                        
-                        # 页面间延迟
-                        delay_time = random.uniform(page_delay_min, page_delay_max)
-                        self.logger.info(f"⏳ 页面间延迟 {delay_time:.1f} 秒")
-                        time.sleep(delay_time)
-                        
-                        # 导航到下一页
-                        if not self.page_parser.navigate_to_next_page(driver):
-                            self.logger.warning("⚠️ 导航到下一页失败，结束提取")
-                            break
-                    
-                    current_page += 1
-                    
-                except Exception as e:
-                    self.logger.error(f"❌ 处理第 {current_page} 页时出错: {e}")
-                    # 尝试继续处理下一页
-                    current_page += 1
-                    continue
-            
-            # 更新提取结果
-            self.extraction_results = all_results
-            
-            # 保存结果摘要
-            if save_results and all_results:
-                self._save_extraction_results(all_results)
-            
-            # 输出最终统计
-            elapsed_time = time.time() - self.extraction_start_time
-            self.logger.info(f"✅ 提取完成!")
-            self.logger.info(f"📊 总计处理 {current_page - 1} 页，提取 {len(all_results)} 个职位")
-            self.logger.info(f"⏱️ 总耗时: {elapsed_time:.2f} 秒")
-            
-            return all_results
-            
-        except Exception as e:
-            self.logger.error(f"❌ 从搜索URL提取职位信息失败: {e}")
-            raise ContentExtractionError(f"从搜索URL提取职位信息失败: {e}")
     
     def _filter_duplicate_jobs(self, job_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -1036,19 +884,27 @@ class ContentExtractor:
             self.logger.error(f"获取去重摘要失败: {e}")
             return self.get_extraction_summary()
     
-    def _filter_new_jobs_by_fingerprint(self, page_jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _filter_new_jobs_by_fingerprint_with_elements(self, page_jobs: List[Dict[str, Any]], job_elements: List) -> List[Dict[str, Any]]:
         """
-        通过指纹过滤出新职位
+        通过指纹过滤出新职位，同时保留对应的页面元素
         
         Args:
             page_jobs: 页面职位列表
+            job_elements: 对应的页面DOM元素列表
             
         Returns:
-            过滤后的新职位列表
+            包含职位数据和对应元素的列表，格式: [{'job_data': job, 'element': element}, ...]
         """
         try:
             if not page_jobs:
                 return []
+            
+            # 确保职位数据和元素数量一致
+            if len(page_jobs) != len(job_elements):
+                self.logger.warning(f"⚠️ 职位数据({len(page_jobs)})和页面元素({len(job_elements)})数量不匹配")
+                min_count = min(len(page_jobs), len(job_elements))
+                page_jobs = page_jobs[:min_count]
+                job_elements = job_elements[:min_count]
             
             # 为每个职位生成指纹
             for job in page_jobs:
@@ -1067,62 +923,67 @@ class ContentExtractor:
             db_manager = DatabaseManager(self.data_storage.db_path)
             existing_fingerprints = db_manager.batch_check_fingerprints(fingerprints)
             
-            # 过滤出新职位
-            new_jobs = []
-            for job in page_jobs:
+            # 过滤出新职位，同时保留对应的页面元素
+            new_jobs_with_elements = []
+            for i, job in enumerate(page_jobs):
                 fingerprint = job['job_fingerprint']
                 if not existing_fingerprints.get(fingerprint, False):
-                    new_jobs.append(job)
+                    new_jobs_with_elements.append({
+                        'job_data': job,
+                        'element': job_elements[i]
+                    })
                 else:
                     self.logger.debug(f"跳过已存在职位: {job.get('title', '')} - {job.get('company', '')}")
             
-            self.logger.info(f"🔍 指纹过滤: 总数 {len(page_jobs)}, 新职位 {len(new_jobs)}, 重复 {len(page_jobs) - len(new_jobs)}")
-            return new_jobs
+            self.logger.info(f"🔍 指纹过滤: 总数 {len(page_jobs)}, 新职位 {len(new_jobs_with_elements)}, 重复 {len(page_jobs) - len(new_jobs_with_elements)}")
+            return new_jobs_with_elements
             
         except Exception as e:
             self.logger.error(f"指纹过滤失败: {e}")
-            return page_jobs  # 出错时返回原始列表
+            # 出错时返回原始列表，尽量保持数据和元素的对应关系
+            fallback_result = []
+            min_count = min(len(page_jobs), len(job_elements))
+            for i in range(min_count):
+                fallback_result.append({
+                    'job_data': page_jobs[i],
+                    'element': job_elements[i]
+                })
+            return fallback_result
     
-    def _extract_new_jobs_details_immediately(self, driver, new_jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _extract_new_jobs_details_immediately(self, driver, new_jobs_with_elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        立即提取新职位的详情信息（复用现有点击逻辑）
+        立即提取新职位的详情信息（修复逻辑错误）
         
         Args:
             driver: WebDriver实例
-            new_jobs: 新职位列表
+            new_jobs_with_elements: 包含职位数据和对应页面元素的列表
+                                   格式: [{'job_data': job, 'element': element}, ...]
             
         Returns:
             包含详情信息的完整职位列表
         """
         try:
-            if not new_jobs:
+            if not new_jobs_with_elements:
                 return []
             
             # 需要导入selenium相关模块
             from selenium.webdriver.common.by import By
             from selenium.webdriver.common.action_chains import ActionChains
             
-            self.logger.info(f"📄 开始立即提取 {len(new_jobs)} 个新职位的详情信息")
+            self.logger.info(f"📄 开始立即提取 {len(new_jobs_with_elements)} 个新职位的详情信息")
             results = []
             
-            # 重新获取页面上的职位元素（因为可能页面已刷新）
-            job_elements = driver.find_elements(By.CSS_SELECTOR, ".jname")
-            
-            if len(job_elements) < len(new_jobs):
-                self.logger.warning(f"⚠️ 页面职位元素数量({len(job_elements)})少于新职位数量({len(new_jobs)})")
-            
-            # 处理每个新职位
-            for i, job in enumerate(new_jobs):
-                if i >= len(job_elements):
-                    self.logger.warning(f"⚠️ 职位索引 {i} 超出页面元素范围，跳过")
-                    break
+            # 处理每个新职位（现在有了正确的数据和元素对应关系）
+            for job_index, job_item in enumerate(new_jobs_with_elements):
+                job = job_item['job_data']
+                job_element = job_item['element']
+                job_title = job.get('title', '').strip()
+                
+                self.logger.info(f"🎯 处理第 {job_index+1}/{len(new_jobs_with_elements)} 个新职位: {job_title}")
                 
                 try:
-                    self.logger.info(f"🎯 处理第 {i+1}/{len(new_jobs)} 个新职位: {job.get('title', '未知')}")
-                    
                     # 记录当前窗口句柄
                     original_windows = driver.window_handles
-                    job_element = job_elements[i]
                     
                     # 模拟人类滚动行为
                     self._simulate_scroll_to_element(driver, job_element)
@@ -1130,14 +991,14 @@ class ContentExtractor:
                     # 模拟鼠标悬停（可选）
                     if random.random() < 0.3:  # 30%概率悬停
                         ActionChains(driver).move_to_element(job_element).perform()
-                        time.sleep(random.uniform(0.2, 0.8))
+                        # time.sleep(random.uniform(0.2, 0.8))  # COMMENTED FOR SPEED
                     
                     # 点击职位标题
                     ActionChains(driver).click(job_element).perform()
                     
-                    # 等待新窗口打开
-                    wait_time = random.uniform(1.0, 2.0)
-                    time.sleep(wait_time)
+                    # 等待新窗口打开 - COMMENTED FOR SPEED
+                    # wait_time = random.uniform(1.0, 2.0)
+                    # time.sleep(wait_time)
                     
                     # 检查是否有新窗口打开
                     new_windows = driver.window_handles
@@ -1146,8 +1007,8 @@ class ContentExtractor:
                         new_window = [w for w in new_windows if w not in original_windows][0]
                         driver.switch_to.window(new_window)
                         
-                        # 短暂等待页面加载
-                        time.sleep(random.uniform(0.5, 1.5))
+                        # 短暂等待页面加载 - COMMENTED FOR SPEED
+                        time.sleep(random.uniform(0.5, 3.0))
                         
                         # 获取详情页URL
                         detail_url = driver.current_url
@@ -1174,28 +1035,28 @@ class ContentExtractor:
                         driver.close()
                         driver.switch_to.window(original_windows[0])
                         
-                        # 思考时间
-                        think_time = random.uniform(0.5, 2.0)
-                        time.sleep(think_time)
+                        # 思考时间 - COMMENTED FOR SPEED
+                        # think_time = random.uniform(0.5, 2.0)
+                        # time.sleep(think_time)
                         
                     else:
                         self.logger.warning(f"⚠️ 点击 {job.get('title', '')} 未打开新窗口")
                     
-                    # 每处理几个职位后，模拟更长的休息
-                    if (i + 1) % random.randint(3, 6) == 0:
-                        rest_time = random.uniform(2.0, 5.0)
-                        self.logger.info(f"⏳ 模拟用户休息 {rest_time:.1f} 秒")
-                        time.sleep(rest_time)
+                    # 每处理几个职位后，模拟更长的休息 - COMMENTED FOR SPEED
+                    # if (i + 1) % random.randint(3, 6) == 0:
+                    #     rest_time = random.uniform(2.0, 5.0)
+                    #     self.logger.info(f"⏳ 模拟用户休息 {rest_time:.1f} 秒")
+                    #     time.sleep(rest_time)
                         
                 except Exception as e:
-                    self.logger.warning(f"❌ 处理职位 {i+1} 时出错: {e}")
+                    self.logger.warning(f"❌ 处理职位 {job_index+1} 时出错: {e}")
                     # 确保回到原窗口
                     if len(driver.window_handles) > 1:
                         driver.switch_to.window(driver.window_handles[0])
                     
-                    # 错误后等待时间
-                    error_wait = random.uniform(3.0, 8.0)
-                    time.sleep(error_wait)
+                    # 错误后等待时间 - COMMENTED FOR SPEED
+                    # error_wait = random.uniform(3.0, 8.0)
+                    # time.sleep(error_wait)
                     continue
             
             self.logger.info(f"🎉 详情提取完成，成功处理 {len(results)} 个职位")
@@ -1254,13 +1115,146 @@ class ContentExtractor:
         try:
             # 滚动到元素位置
             driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", target_element)
-            time.sleep(random.uniform(0.3, 0.8))
+            # time.sleep(random.uniform(0.3, 0.8))  # COMMENTED FOR SPEED
             
         except Exception as e:
             self.logger.debug(f"模拟滚动失败: {e}")
             # 回退到简单滚动
             try:
                 driver.execute_script("arguments[0].scrollIntoView(true);", target_element)
-                time.sleep(0.5)
+                # time.sleep(0.5)  # COMMENTED FOR SPEED
             except:
                 pass
+    
+    
+    def extract_from_search_url(self,
+                               search_url: str,
+                               keyword: Optional[str] = None,
+                               max_results: Optional[int] = None,
+                               save_results: bool = True,
+                               extract_details: bool = False,
+                               max_pages: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        从搜索URL提取职位信息（同步版本）
+        
+        Args:
+            search_url: 搜索页面URL
+            keyword: 搜索关键词
+            max_results: 最大结果数量
+            save_results: 是否保存结果
+            extract_details: 是否提取详情页内容
+            max_pages: 最大页数
+            
+        Returns:
+            提取的职位信息列表
+        """
+        try:
+            self.logger.info(f"🚀 开始从搜索URL提取职位信息: {search_url}")
+            self.logger.info(f"📊 参数: 关键词='{keyword}', 最大结果={max_results}, 最大页数={max_pages}, 提取详情={extract_details}")
+            
+            # 设置当前关键词和开始时间
+            self.current_keyword = keyword or self._extract_keyword_from_url(search_url)
+            self.extraction_start_time = time.time()
+            self.extraction_results = []
+            
+            # 准备浏览器
+            driver = self._prepare_browser()
+            
+            # 导航到搜索页面
+            self._navigate_to_page(driver, search_url)
+            
+            # 获取配置参数
+            max_pages = max_pages or self.search_config.get('strategy', {}).get('max_pages', 5)
+            
+            # 主循环：逐页处理
+            current_page = 1
+            all_results = []
+            
+            self.logger.info(f"🔄 开始逐页处理，最大页数: {max_pages}")
+            
+            while current_page <= max_pages:
+                try:
+                    self.logger.info(f"📄 处理第 {current_page} 页")
+                    
+                    # 使用同步方法解析职位列表
+                    page_jobs = self.page_parser.parse_job_list(driver, max_results)
+                    
+                    if not page_jobs:
+                        self.logger.warning(f"⚠️ 第 {current_page} 页未找到职位信息")
+                        break
+                    
+                    self.logger.info(f"📋 第 {current_page} 页找到 {len(page_jobs)} 个职位")
+                    
+                    # 为每个职位添加页面信息
+                    for job in page_jobs:
+                        job['page_number'] = current_page
+                        job['search_keyword'] = self.current_keyword
+                    
+                    # 过滤新职位并处理
+                    from selenium.webdriver.common.by import By
+                    job_elements = driver.find_elements(By.CSS_SELECTOR, ".jname")
+                    new_jobs_with_elements = self._filter_new_jobs_by_fingerprint_with_elements(page_jobs, job_elements)
+                    
+                    if not new_jobs_with_elements:
+                        self.logger.info(f"✅ 第 {current_page} 页所有职位都已存在，跳过详情提取")
+                    else:
+                        self.logger.info(f"🆕 第 {current_page} 页发现 {len(new_jobs_with_elements)} 个新职位")
+                        
+                        # 对新职位立即提取详情并保存
+                        if extract_details:
+                            page_results = self._extract_new_jobs_details_immediately(driver, new_jobs_with_elements)
+                        else:
+                            # 如果不提取详情，直接保存列表信息
+                            new_jobs_only = [item['job_data'] for item in new_jobs_with_elements]
+                            page_results = self._save_list_jobs_immediately(new_jobs_only)
+                        
+                        all_results.extend(page_results)
+                        
+                        self.logger.info(f"💾 第 {current_page} 页成功处理 {len(page_results)} 个职位")
+                    
+                    # 检查是否达到最大结果数量
+                    if max_results and len(all_results) >= max_results:
+                        self.logger.info(f"📊 已达到最大结果数量限制: {max_results}")
+                        break
+                    
+                    # 检查是否有下一页
+                    if not self.page_parser.has_next_page(driver):
+                        self.logger.info("📄 已到达最后一页")
+                        break
+                    
+                    # 导航到下一页
+                    if current_page < max_pages:
+                        self.logger.info(f"➡️ 准备进入第 {current_page + 1} 页")
+                        
+                        # 导航到下一页
+                        if not self.page_parser.navigate_to_next_page(driver):
+                            self.logger.warning("⚠️ 导航到下一页失败，结束提取")
+                            break
+                    
+                    current_page += 1
+                    
+                except Exception as e:
+                    self.logger.error(f"❌ 处理第 {current_page} 页时出错: {e}")
+                    # 尝试继续处理下一页
+                    current_page += 1
+                    continue
+            
+            # 更新提取结果
+            self.extraction_results = all_results
+            
+            # 注释掉重复保存，因为职位已在立即提取时保存
+            # if save_results and all_results:
+            #     self._save_extraction_results(all_results)
+            self.logger.info(f"💾 职位已在提取过程中立即保存，跳过重复保存")
+            
+            # 输出最终统计
+            elapsed_time = time.time() - self.extraction_start_time
+            self.logger.info(f"✅ 提取完成!")
+            self.logger.info(f"📊 总计处理 {current_page - 1} 页，提取 {len(all_results)} 个职位")
+            self.logger.info(f"⏱️ 总耗时: {elapsed_time:.2f} 秒")
+            
+            return all_results
+            
+        except Exception as e:
+            self.logger.error(f"❌ 从搜索URL提取职位信息失败: {e}")
+            raise ContentExtractionError(f"从搜索URL提取职位信息失败: {e}")

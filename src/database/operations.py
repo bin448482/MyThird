@@ -701,3 +701,317 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"清理重复职位失败: {e}")
             return 0
+    
+    def save_resume_match(self, match_data: Dict[str, Any]) -> bool:
+        """
+        保存简历匹配结果（如果job_id存在则更新）
+        
+        Args:
+            match_data: 匹配结果数据
+            
+        Returns:
+            是否保存成功
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                job_id = match_data['job_id']
+                resume_profile_id = match_data.get('resume_profile_id', 'default')
+                now = datetime.now().isoformat()
+                
+                # 检查是否已存在相同job_id和resume_profile_id的记录
+                cursor.execute("""
+                    SELECT id FROM resume_matches
+                    WHERE job_id = ? AND resume_profile_id = ?
+                """, (job_id, resume_profile_id))
+                
+                existing_record = cursor.fetchone()
+                
+                if existing_record:
+                    # 更新现有记录
+                    sql = """
+                    UPDATE resume_matches SET
+                        match_score = ?, priority_level = ?, semantic_score = ?,
+                        skill_match_score = ?, experience_match_score = ?,
+                        location_match_score = ?, salary_match_score = ?,
+                        match_details = ?, match_reasons = ?, created_at = ?
+                    WHERE job_id = ? AND resume_profile_id = ?
+                    """
+                    
+                    cursor.execute(sql, (
+                        match_data['match_score'],
+                        match_data['priority_level'],
+                        match_data.get('semantic_score'),
+                        match_data.get('skill_match_score'),
+                        match_data.get('experience_match_score'),
+                        match_data.get('location_match_score'),
+                        match_data.get('salary_match_score'),
+                        match_data.get('match_details'),
+                        match_data.get('match_reasons'),
+                        now,
+                        job_id,
+                        resume_profile_id
+                    ))
+                    
+                    self.logger.debug(f"更新简历匹配结果成功: {job_id}")
+                else:
+                    # 插入新记录
+                    sql = """
+                    INSERT INTO resume_matches
+                    (job_id, resume_profile_id, match_score, priority_level, semantic_score,
+                     skill_match_score, experience_match_score, location_match_score,
+                     salary_match_score, match_details, match_reasons, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """
+                    
+                    cursor.execute(sql, (
+                        job_id,
+                        resume_profile_id,
+                        match_data['match_score'],
+                        match_data['priority_level'],
+                        match_data.get('semantic_score'),
+                        match_data.get('skill_match_score'),
+                        match_data.get('experience_match_score'),
+                        match_data.get('location_match_score'),
+                        match_data.get('salary_match_score'),
+                        match_data.get('match_details'),
+                        match_data.get('match_reasons'),
+                        now
+                    ))
+                    
+                    self.logger.debug(f"插入简历匹配结果成功: {job_id}")
+                
+                conn.commit()
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"保存简历匹配结果失败: {e}")
+            return False
+    
+    def batch_save_resume_matches(self, matches: List[Dict[str, Any]]) -> int:
+        """
+        批量保存简历匹配结果（先删除相同job_id的记录再插入）
+        
+        Args:
+            matches: 匹配结果列表
+            
+        Returns:
+            成功保存的数量
+        """
+        success_count = 0
+        
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                now = datetime.now().isoformat()
+                
+                # 收集所有job_id和resume_profile_id
+                job_profile_pairs = [(match['job_id'], match.get('resume_profile_id', 'default')) for match in matches]
+                
+                # 先删除相同job_id和resume_profile_id的现有记录
+                if job_profile_pairs:
+                    delete_sql = "DELETE FROM resume_matches WHERE job_id = ? AND resume_profile_id = ?"
+                    for job_id, profile_id in job_profile_pairs:
+                        cursor.execute(delete_sql, (job_id, profile_id))
+                    
+                    deleted_count = cursor.rowcount
+                    if deleted_count > 0:
+                        self.logger.info(f"删除了 {deleted_count} 条现有匹配记录")
+                
+                # 插入新记录
+                insert_sql = """
+                INSERT INTO resume_matches
+                (job_id, resume_profile_id, match_score, priority_level, semantic_score,
+                 skill_match_score, experience_match_score, location_match_score,
+                 salary_match_score, match_details, match_reasons, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                
+                for match_data in matches:
+                    try:
+                        cursor.execute(insert_sql, (
+                            match_data['job_id'],
+                            match_data.get('resume_profile_id', 'default'),
+                            match_data['match_score'],
+                            match_data['priority_level'],
+                            match_data.get('semantic_score'),
+                            match_data.get('skill_match_score'),
+                            match_data.get('experience_match_score'),
+                            match_data.get('location_match_score'),
+                            match_data.get('salary_match_score'),
+                            match_data.get('match_details'),
+                            match_data.get('match_reasons'),
+                            now
+                        ))
+                        success_count += 1
+                    except Exception as e:
+                        self.logger.warning(f"保存单个匹配结果失败: {e}")
+                        continue
+                
+                conn.commit()
+                self.logger.info(f"批量保存简历匹配结果: {success_count}/{len(matches)} 成功")
+                
+        except Exception as e:
+            self.logger.error(f"批量保存简历匹配结果失败: {e}")
+        
+        return success_count
+    
+    def get_resume_matches(self, job_id: str = None, resume_profile_id: str = None,
+                          priority_level: str = None, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        获取简历匹配结果
+        
+        Args:
+            job_id: 职位ID筛选
+            resume_profile_id: 简历档案ID筛选
+            priority_level: 优先级筛选
+            limit: 限制数量
+            
+        Returns:
+            匹配结果列表
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                conditions = []
+                params = []
+                
+                if job_id:
+                    conditions.append("job_id = ?")
+                    params.append(job_id)
+                
+                if resume_profile_id:
+                    conditions.append("resume_profile_id = ?")
+                    params.append(resume_profile_id)
+                
+                if priority_level:
+                    conditions.append("priority_level = ?")
+                    params.append(priority_level)
+                
+                where_clause = ""
+                if conditions:
+                    where_clause = "WHERE " + " AND ".join(conditions)
+                
+                params.append(limit)
+                
+                cursor.execute(f"""
+                    SELECT * FROM resume_matches
+                    {where_clause}
+                    ORDER BY match_score DESC, created_at DESC
+                    LIMIT ?
+                """, params)
+                
+                matches = []
+                for row in cursor.fetchall():
+                    matches.append(dict(row))
+                
+                return matches
+                
+        except Exception as e:
+            self.logger.error(f"获取简历匹配结果失败: {e}")
+            return []
+    
+    def get_unprocessed_matches(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        获取未处理的匹配结果
+        
+        Args:
+            limit: 限制数量
+            
+        Returns:
+            未处理的匹配结果列表
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    SELECT * FROM resume_matches
+                    WHERE processed = 0 OR processed IS NULL
+                    ORDER BY match_score DESC, created_at DESC
+                    LIMIT ?
+                """, (limit,))
+                
+                matches = []
+                for row in cursor.fetchall():
+                    matches.append(dict(row))
+                
+                return matches
+                
+        except Exception as e:
+            self.logger.error(f"获取未处理匹配结果失败: {e}")
+            return []
+    
+    def mark_match_as_processed(self, match_id: int) -> bool:
+        """
+        标记匹配结果为已处理
+        
+        Args:
+            match_id: 匹配结果ID
+            
+        Returns:
+            是否标记成功
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                now = datetime.now().isoformat()
+                cursor.execute("""
+                    UPDATE resume_matches
+                    SET processed = 1, processed_at = ?
+                    WHERE id = ?
+                """, (now, match_id))
+                
+                conn.commit()
+                return cursor.rowcount > 0
+                
+        except Exception as e:
+            self.logger.error(f"标记匹配结果处理状态失败: {e}")
+            return False
+    
+    def get_match_statistics(self) -> Dict[str, Any]:
+        """
+        获取匹配结果统计信息
+        
+        Returns:
+            统计信息字典
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # 总数统计
+                cursor.execute("SELECT COUNT(*) as total FROM resume_matches")
+                total = cursor.fetchone()['total']
+                
+                # 按优先级统计
+                cursor.execute("""
+                    SELECT priority_level, COUNT(*) as count
+                    FROM resume_matches
+                    GROUP BY priority_level
+                """)
+                priority_counts = {row['priority_level']: row['count'] for row in cursor.fetchall()}
+                
+                # 平均匹配分数
+                cursor.execute("SELECT AVG(match_score) as avg_score FROM resume_matches")
+                avg_score = cursor.fetchone()['avg_score'] or 0
+                
+                # 处理状态统计
+                cursor.execute("SELECT COUNT(*) as processed FROM resume_matches WHERE processed = 1")
+                processed = cursor.fetchone()['processed']
+                
+                return {
+                    'total_matches': total,
+                    'processed_matches': processed,
+                    'unprocessed_matches': total - processed,
+                    'avg_match_score': round(avg_score, 3),
+                    'priority_counts': priority_counts,
+                    'processing_rate': (processed / total * 100) if total > 0 else 0
+                }
+                
+        except Exception as e:
+            self.logger.error(f"获取匹配统计信息失败: {e}")
+            return {}
