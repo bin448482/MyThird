@@ -183,25 +183,42 @@ class MasterController:
             )
     
     async def _execute_job_extraction(self, pipeline_config: PipelineConfig) -> Dict[str, Any]:
-        """执行职位提取阶段"""
+        """执行职位提取阶段（异步接口，内部调用同步方法）"""
+        return self._execute_job_extraction_sync(pipeline_config)
+    
+    def _execute_job_extraction_sync(self, pipeline_config: PipelineConfig) -> Dict[str, Any]:
+        """执行职位提取阶段（同步方法）"""
         stage_start = time.time()
         
         try:
-            extraction_tasks = []
-            for keyword in pipeline_config.search_keywords:
-                # 这里需要根据实际的ContentExtractor接口调整
-                task = self._extract_jobs_for_keyword(
-                    keyword=keyword,
-                    max_results=pipeline_config.max_jobs_per_keyword,
-                    max_pages=pipeline_config.max_pages
-                )
-                extraction_tasks.append(task)
+            combined_results = []
             
-            # 并发执行提取任务
-            results = await asyncio.gather(*extraction_tasks, return_exceptions=True)
-            
-            # 合并和验证结果
-            combined_results = self._merge_extraction_results(results)
+            # 顺序执行每个关键词的提取任务（避免Selenium并发问题）
+            for i, keyword in enumerate(pipeline_config.search_keywords, 1):
+                logger.info(f"开始处理关键词 {i}/{len(pipeline_config.search_keywords)}: '{keyword}'")
+                
+                try:
+                    # 同步调用ContentExtractor
+                    keyword_results = self.job_extractor.extract_from_keyword(
+                        keyword=keyword,
+                        max_results=pipeline_config.max_jobs_per_keyword,
+                        save_results=True,
+                        extract_details=True,
+                        max_pages=pipeline_config.max_pages
+                    )
+                    
+                    logger.info(f"关键词 '{keyword}' 提取完成: {len(keyword_results)} 个职位")
+                    combined_results.extend(keyword_results)
+                    
+                    # 关键词之间添加短暂间隔，避免过于频繁的请求
+                    if i < len(pipeline_config.search_keywords):
+                        logger.info(f"等待 10 秒后处理下一个关键词...")
+                        time.sleep(10)
+                        
+                except Exception as e:
+                    logger.error(f"处理关键词 '{keyword}' 失败: {e}")
+                    # 继续处理下一个关键词，不中断整个流程
+                    continue
             
             stage_time = time.time() - stage_start
             self.execution_stats['stage_timings']['extraction'] = stage_time
@@ -223,8 +240,8 @@ class MasterController:
             self._last_extraction_result = result
             return result
     
-    async def _extract_jobs_for_keyword(self, keyword: str, max_results: int, max_pages: int) -> List[Dict]:
-        """为单个关键词提取职位"""
+    def _extract_jobs_for_keyword_sync(self, keyword: str, max_results: int, max_pages: int) -> List[Dict]:
+        """为单个关键词提取职位（同步方法）"""
         logger.info(f"开始为关键词 '{keyword}' 提取职位，最大结果数: {max_results}, 最大页数: {max_pages}")
         
         try:
@@ -247,23 +264,9 @@ class MasterController:
             
         except Exception as e:
             logger.error(f"ContentExtractor 提取职位失败: {e}")
-            # 如果真实提取失败，返回少量模拟数据用于测试
-            logger.warning("使用模拟数据作为备用方案")
-            return [
-                {
-                    'id': f'job_{keyword}_{i}',
-                    'title': f'{keyword}相关职位{i}',
-                    'company': f'公司{i}',
-                    'location': '上海',
-                    'description': f'{keyword}职位描述{i}',
-                    'requirements': f'{keyword}职位要求{i}',
-                    'salary': '面议',
-                    'url': f'https://example.com/job_{i}',
-                    'source': 'mock_data',
-                    'extracted_at': datetime.now().isoformat()
-                }
-                for i in range(min(max_results, 5))  # 限制模拟数据数量为5条
-            ]
+            # 如果真实提取失败，返回空列表而不是模拟数据
+            logger.warning("提取失败，返回空结果")
+            return []
     
     def _merge_extraction_results(self, results: List) -> List[Dict]:
         """合并提取结果"""

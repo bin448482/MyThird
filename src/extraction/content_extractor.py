@@ -159,8 +159,8 @@ class ContentExtractor:
                             self.logger.debug(f"💾 职位详情已保存到数据库: {detail.get('title', '')}")
                         
                         # 详情页：增加阅读时间模拟 - COMMENTED FOR SPEED
-                        # if self.behavior_simulator and random.random() < 0.6:  # 增加到60%概率模拟阅读
-                        #     self.behavior_simulator.random_delay(1.0, 3.0)  # 延长阅读时间
+                        if self.behavior_simulator and random.random() < 0.6:  # 增加到60%概率模拟阅读
+                            self.behavior_simulator.random_delay(1.0, 3.0)  # 延长阅读时间
                     
                     # 详情页：适当增加休息时间 - COMMENTED FOR SPEED
                     # if i % random.randint(5, 8) == 0:  # 详情页休息频率适中
@@ -988,13 +988,51 @@ class ContentExtractor:
                     # 模拟人类滚动行为
                     self._simulate_scroll_to_element(driver, job_element)
                     
-                    # 模拟鼠标悬停（可选）
-                    if random.random() < 0.3:  # 30%概率悬停
-                        ActionChains(driver).move_to_element(job_element).perform()
-                        # time.sleep(random.uniform(0.2, 0.8))  # COMMENTED FOR SPEED
+                    # 等待元素稳定
+                    time.sleep(0.5)
                     
-                    # 点击职位标题
-                    ActionChains(driver).click(job_element).perform()
+                    # 检查元素是否可点击
+                    if not self._is_element_clickable(driver, job_element):
+                        failed_job_info = {
+                            'title': job.get('title', ''),
+                            'company': job.get('company', ''),
+                            'location': job.get('location', ''),
+                            'salary': job.get('salary', ''),
+                            'url': job.get('url', ''),
+                            'reason': '元素不可点击'
+                        }
+                        self.logger.warning(f"⚠️ 元素不可点击 - 标题: {failed_job_info['title']}, 公司: {failed_job_info['company']}")
+                        self._log_failed_job(failed_job_info)
+                        continue
+                    
+                    # 使用BehaviorSimulator进行更自然的交互
+                    if self.behavior_simulator:
+                        # 使用自然鼠标移动
+                        self.behavior_simulator.simulate_human_mouse_move(job_element)
+                        
+                        # 模拟短暂观察
+                        if random.random() < 0.4:
+                            self.behavior_simulator.simulate_reading_pause(50)
+                    else:
+                        # 回退到简单的鼠标悬停
+                        if random.random() < 0.3:
+                            ActionChains(driver).move_to_element(job_element).perform()
+                            time.sleep(random.uniform(0.2, 0.5))
+                    
+                    # 尝试多种点击方式（带重试机制）
+                    click_success = self._try_multiple_click_methods_with_retry(driver, job_element, max_retries=3)
+                    if not click_success:
+                        failed_job_info = {
+                            'title': job.get('title', ''),
+                            'company': job.get('company', ''),
+                            'location': job.get('location', ''),
+                            'salary': job.get('salary', ''),
+                            'url': job.get('url', ''),
+                            'reason': '所有点击方法和重试都失败'
+                        }
+                        self.logger.warning(f"⚠️ 点击失败 - 标题: {failed_job_info['title']}, 公司: {failed_job_info['company']}")
+                        self._log_failed_job(failed_job_info)
+                        continue
                     
                     # 等待新窗口打开 - COMMENTED FOR SPEED
                     # wait_time = random.uniform(1.0, 2.0)
@@ -1008,7 +1046,7 @@ class ContentExtractor:
                         driver.switch_to.window(new_window)
                         
                         # 短暂等待页面加载 - COMMENTED FOR SPEED
-                        time.sleep(random.uniform(0.5, 3.0))
+                        time.sleep(random.uniform(1.5, 4.0))
                         
                         # 获取详情页URL
                         detail_url = driver.current_url
@@ -1040,7 +1078,17 @@ class ContentExtractor:
                         # time.sleep(think_time)
                         
                     else:
-                        self.logger.warning(f"⚠️ 点击 {job.get('title', '')} 未打开新窗口")
+                        # 记录失败的job信息到日志
+                        failed_job_info = {
+                            'title': job.get('title', ''),
+                            'company': job.get('company', ''),
+                            'location': job.get('location', ''),
+                            'salary': job.get('salary', ''),
+                            'url': job.get('url', ''),
+                            'reason': '点击未打开新窗口'
+                        }
+                        self.logger.warning(f"⚠️ 点击失败 - 标题: {failed_job_info['title']}, 公司: {failed_job_info['company']}")
+                        self._log_failed_job(failed_job_info)
                     
                     # 每处理几个职位后，模拟更长的休息 - COMMENTED FOR SPEED
                     # if (i + 1) % random.randint(3, 6) == 0:
@@ -1049,7 +1097,18 @@ class ContentExtractor:
                     #     time.sleep(rest_time)
                         
                 except Exception as e:
-                    self.logger.warning(f"❌ 处理职位 {job_index+1} 时出错: {e}")
+                    # 记录异常失败的job信息
+                    failed_job_info = {
+                        'title': job.get('title', ''),
+                        'company': job.get('company', ''),
+                        'location': job.get('location', ''),
+                        'salary': job.get('salary', ''),
+                        'url': job.get('url', ''),
+                        'reason': f'处理异常: {str(e)}'
+                    }
+                    self.logger.warning(f"❌ 处理职位异常 - 标题: {failed_job_info['title']}, 公司: {failed_job_info['company']}, 错误: {e}")
+                    self._log_failed_job(failed_job_info)
+                    
                     # 确保回到原窗口
                     if len(driver.window_handles) > 1:
                         driver.switch_to.window(driver.window_handles[0])
@@ -1126,6 +1185,249 @@ class ContentExtractor:
             except:
                 pass
     
+    def _log_failed_job(self, failed_job_info: Dict[str, Any]) -> None:
+        """
+        记录失败的job信息到日志文件
+        
+        Args:
+            failed_job_info: 失败的job信息字典
+        """
+        try:
+            import json
+            import os
+            from datetime import datetime
+            
+            # 确保logs目录存在
+            logs_dir = "logs"
+            if not os.path.exists(logs_dir):
+                os.makedirs(logs_dir)
+            
+            # 创建失败job日志文件
+            failed_jobs_file = os.path.join(logs_dir, "failed_jobs.json")
+            
+            # 添加时间戳
+            failed_job_info['failed_at'] = datetime.now().isoformat()
+            failed_job_info['extraction_session'] = getattr(self, 'current_keyword', 'unknown')
+            
+            # 读取现有的失败记录
+            failed_jobs = []
+            if os.path.exists(failed_jobs_file):
+                try:
+                    with open(failed_jobs_file, 'r', encoding='utf-8') as f:
+                        failed_jobs = json.load(f)
+                except:
+                    failed_jobs = []
+            
+            # 添加新的失败记录
+            failed_jobs.append(failed_job_info)
+            
+            # 保存到文件
+            with open(failed_jobs_file, 'w', encoding='utf-8') as f:
+                json.dump(failed_jobs, f, ensure_ascii=False, indent=2)
+            
+            self.logger.debug(f"失败job信息已记录到: {failed_jobs_file}")
+            
+        except Exception as e:
+            self.logger.error(f"记录失败job信息时出错: {e}")
+    
+    def _is_element_clickable(self, driver, element) -> bool:
+        """
+        检查元素是否可点击
+        
+        Args:
+            driver: WebDriver实例
+            element: 要检查的元素
+            
+        Returns:
+            是否可点击
+        """
+        try:
+            from selenium.webdriver.support import expected_conditions as EC
+            from selenium.webdriver.support.ui import WebDriverWait
+            
+            # 检查元素是否可见和可点击
+            if not element.is_displayed():
+                return False
+            
+            if not element.is_enabled():
+                return False
+            
+            # 检查元素是否被其他元素遮挡
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element)
+                time.sleep(0.3)
+                
+                # 尝试获取元素位置
+                location = element.location_once_scrolled_into_view
+                size = element.size
+                
+                if location and size and size['width'] > 0 and size['height'] > 0:
+                    return True
+                    
+            except Exception as e:
+                self.logger.debug(f"检查元素可点击性时出错: {e}")
+                return False
+            
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"检查元素可点击性失败: {e}")
+            return False
+    
+    def _try_multiple_click_methods_with_retry(self, driver, element, max_retries: int = 3) -> bool:
+        """
+        尝试多种点击方法（带重试机制）
+        
+        Args:
+            driver: WebDriver实例
+            element: 要点击的元素
+            max_retries: 最大重试次数
+            
+        Returns:
+            是否点击成功
+        """
+        for retry in range(max_retries):
+            try:
+                self.logger.debug(f"尝试点击，第 {retry + 1}/{max_retries} 次")
+                
+                # 每次重试前重新检查元素状态
+                if not self._is_element_clickable(driver, element):
+                    self.logger.debug(f"第 {retry + 1} 次重试：元素不可点击，等待后重试")
+                    time.sleep(1 + retry * 0.5)  # 递增等待时间
+                    continue
+                
+                # 尝试点击
+                if self._try_multiple_click_methods(driver, element):
+                    self.logger.debug(f"第 {retry + 1} 次重试成功")
+                    return True
+                
+                # 失败后等待
+                if retry < max_retries - 1:
+                    wait_time = 1 + retry * 0.5
+                    self.logger.debug(f"第 {retry + 1} 次重试失败，等待 {wait_time} 秒后重试")
+                    time.sleep(wait_time)
+                    
+                    # 重新滚动到元素位置
+                    self._simulate_scroll_to_element(driver, element)
+                    
+            except Exception as e:
+                self.logger.debug(f"第 {retry + 1} 次重试出现异常: {e}")
+                if retry < max_retries - 1:
+                    time.sleep(1 + retry * 0.5)
+                    continue
+        
+        return False
+    
+    def _find_job_elements_with_multiple_selectors(self, driver) -> List:
+        """
+        使用多种选择器策略查找职位元素
+        
+        Args:
+            driver: WebDriver实例
+            
+        Returns:
+            职位元素列表
+        """
+        from selenium.webdriver.common.by import By
+        
+        # 多种选择器策略，按优先级排序
+        selectors = [
+            ".jname",  # 原始选择器
+            ".job-title",  # 通用职位标题选择器
+            "[data-job-id]",  # 带job-id属性的元素
+            "a[href*='job']",  # 包含job的链接
+            ".job-item .title",  # 职位项目中的标题
+            ".position-title",  # 职位标题
+            ".job-name",  # 职位名称
+            ".jobname"  # 职位名称变体
+        ]
+        
+        job_elements = []
+        
+        for selector in selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                if elements:
+                    self.logger.debug(f"使用选择器 '{selector}' 找到 {len(elements)} 个元素")
+                    job_elements = elements
+                    break
+            except Exception as e:
+                self.logger.debug(f"选择器 '{selector}' 失败: {e}")
+                continue
+        
+        if not job_elements:
+            # 如果所有选择器都失败，尝试通用方法
+            try:
+                # 查找所有可能的职位链接
+                all_links = driver.find_elements(By.TAG_NAME, "a")
+                job_elements = [link for link in all_links
+                              if link.get_attribute("href") and "job" in link.get_attribute("href").lower()]
+                if job_elements:
+                    self.logger.debug(f"使用通用方法找到 {len(job_elements)} 个职位链接")
+            except Exception as e:
+                self.logger.warning(f"通用方法也失败: {e}")
+        
+        return job_elements
+    
+    def _try_multiple_click_methods(self, driver, element) -> bool:
+        """
+        尝试多种点击方法
+        
+        Args:
+            driver: WebDriver实例
+            element: 要点击的元素
+            
+        Returns:
+            是否点击成功
+        """
+        try:
+            original_windows = driver.window_handles
+            
+            # 方法1: 标准ActionChains点击
+            try:
+                ActionChains(driver).click(element).perform()
+                time.sleep(1.0)
+                if len(driver.window_handles) > len(original_windows):
+                    return True
+            except Exception as e:
+                self.logger.debug(f"ActionChains点击失败: {e}")
+            
+            # 方法2: 直接element.click()
+            try:
+                element.click()
+                time.sleep(1.0)
+                if len(driver.window_handles) > len(original_windows):
+                    return True
+            except Exception as e:
+                self.logger.debug(f"element.click()失败: {e}")
+            
+            # 方法3: JavaScript点击
+            try:
+                driver.execute_script("arguments[0].click();", element)
+                time.sleep(1.0)
+                if len(driver.window_handles) > len(original_windows):
+                    return True
+            except Exception as e:
+                self.logger.debug(f"JavaScript点击失败: {e}")
+            
+            # 方法4: 尝试点击子元素（如果存在链接）
+            try:
+                from selenium.webdriver.common.by import By
+                link_element = element.find_element(By.TAG_NAME, "a")
+                if link_element:
+                    link_element.click()
+                    time.sleep(1.0)
+                    if len(driver.window_handles) > len(original_windows):
+                        return True
+            except Exception as e:
+                self.logger.debug(f"子元素点击失败: {e}")
+            
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"多种点击方法都失败: {e}")
+            return False
+    
     
     def extract_from_search_url(self,
                                search_url: str,
@@ -1176,8 +1478,12 @@ class ContentExtractor:
                 try:
                     self.logger.info(f"📄 处理第 {current_page} 页")
                     
+                    # 计算当前页面需要的职位数量
+                    remaining_needed = max_results - len(all_results) if max_results else None
+                    page_max_results = remaining_needed if remaining_needed and remaining_needed < 50 else None
+                    
                     # 使用同步方法解析职位列表
-                    page_jobs = self.page_parser.parse_job_list(driver, max_results)
+                    page_jobs = self.page_parser.parse_job_list(driver, page_max_results)
                     
                     if not page_jobs:
                         self.logger.warning(f"⚠️ 第 {current_page} 页未找到职位信息")

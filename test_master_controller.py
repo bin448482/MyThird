@@ -51,14 +51,14 @@ async def test_master_controller():
     
     # 配置流水线参数
     pipeline_config = PipelineConfig(
-        search_keywords=["Python开发"],  # 只测试一个关键词
+        search_keywords=["AI", "Python", ".net", "Azure", "数据工程师"],    # 5个关键词
         search_locations=["上海"],
-        max_jobs_per_keyword=40,  # 总40个职位
-        max_pages=2,              # 测试2页
+        max_jobs_per_keyword=100,  # 总100个职位
+        max_pages=5,              # 测试5页
         resume_profile=resume_profile,
         decision_criteria={
             "min_salary": 15000,
-            "preferred_locations": ["上海", "北京"]
+            "preferred_locations": ["上海"]
         },
         submission_config={
             "dry_run": True,  # 测试模式，不实际投递
