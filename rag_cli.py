@@ -31,6 +31,7 @@ from src.matcher.generic_resume_models import (
 )
 from src.matcher.generic_resume_matcher import GenericResumeJobMatcher
 from src.matcher.generic_resume_vectorizer import GenericResumeVectorizer
+from src.analysis_tools.agent import create_analysis_agent
 
 def setup_logging(log_level: str = 'INFO', log_file: str = None):
     """设置日志配置"""
@@ -71,7 +72,7 @@ def load_config(config_file: str = None) -> dict:
                 'max_tokens': 2000
             },
             'vector_db': {
-                'persist_directory': './chroma_db',
+                'persist_directory': './data/test_chroma_db',
                 'collection_name': 'job_positions',
                 'embeddings': {
                     'model_name': 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
@@ -1412,6 +1413,221 @@ def generate_html_report(result, resume_profile):
         career_recommendations=career_recommendations
     )
 
+async def chat_command(args):
+    """智能分析聊天命令"""
+    print("🤖 就业市场分析助手")
+    print("=" * 40)
+    
+    try:
+        # 加载配置
+        config = load_config(args.config)
+        
+        # 加载Agent配置
+        agent_config_path = args.agent_config or 'config/agent_config.yaml'
+        if Path(agent_config_path).exists():
+            agent_config = load_config(agent_config_path)
+            # 合并配置
+            config.update(agent_config)
+        else:
+            print(f"⚠️ Agent配置文件不存在: {agent_config_path}")
+            print("使用默认配置...")
+        
+        # 初始化RAG系统
+        coordinator = RAGSystemCoordinator(config)
+        if not coordinator.initialize_system():
+            print("❌ RAG系统初始化失败")
+            return False
+        
+        # 创建分析Agent
+        try:
+            agent = create_analysis_agent(coordinator, config)
+            print("✅ 智能分析Agent初始化成功")
+        except Exception as e:
+            print(f"❌ Agent初始化失败: {e}")
+            return False
+        
+        # 显示Agent状态
+        status = agent.get_agent_status()
+        print(f"\n📊 Agent状态:")
+        print(f"   可用工具: {len(status['tools_available'])}")
+        print(f"   工具列表: {', '.join(status['tools_available'])}")
+        print(f"   LLM提供商: {status['llm_provider']}")
+        
+        # 显示欢迎信息
+        welcome_msg = config.get('langchain_agent', {}).get('user_experience', {}).get('interaction', {}).get('welcome_message')
+        if welcome_msg:
+            print(f"\n💬 {welcome_msg}")
+        
+        # 显示帮助信息
+        if args.show_help:
+            help_msg = config.get('langchain_agent', {}).get('user_experience', {}).get('interaction', {}).get('help_message')
+            if help_msg:
+                print(f"\n❓ 使用帮助:\n{help_msg}")
+            
+            # 显示建议问题
+            suggested_questions = config.get('langchain_agent', {}).get('user_experience', {}).get('suggested_questions', [])
+            if suggested_questions:
+                print(f"\n💡 建议问题:")
+                for i, question in enumerate(suggested_questions[:5], 1):
+                    print(f"   {i}. {question}")
+        
+        print(f"\n{'='*40}")
+        print("💡 输入 'help' 查看帮助，'quit' 或 'exit' 退出")
+        print("💡 输入 'clear' 清除对话历史，'status' 查看Agent状态")
+        print("💡 输入 'stats' 查看分析统计信息")
+        print("💡 按 Ctrl+C 可以随时退出聊天")
+        print("="*40)
+        
+        # 交互循环
+        conversation_count = 0
+        
+        while True:
+            try:
+                # 获取用户输入
+                user_input = input("\n🤔 您的问题: ").strip()
+                
+                if not user_input:
+                    continue
+                
+                # 处理特殊命令
+                if user_input.lower() in ['quit', 'exit', 'q']:
+                    print("👋 再见！")
+                    break
+                
+                elif user_input.lower() == 'help':
+                    help_msg = config.get('langchain_agent', {}).get('user_experience', {}).get('interaction', {}).get('help_message')
+                    if help_msg:
+                        print(f"\n❓ 使用帮助:\n{help_msg}")
+                    
+                    suggested_questions = config.get('langchain_agent', {}).get('user_experience', {}).get('suggested_questions', [])
+                    if suggested_questions:
+                        print(f"\n💡 建议问题:")
+                        for i, question in enumerate(suggested_questions, 1):
+                            print(f"   {i}. {question}")
+                    continue
+                
+                elif user_input.lower() == 'clear':
+                    agent.clear_memory()
+                    conversation_count = 0
+                    print("🧹 对话历史已清除")
+                    continue
+                
+                elif user_input.lower() == 'status':
+                    status = agent.get_agent_status()
+                    print(f"\n📊 Agent状态:")
+                    print(f"   可用工具: {len(status['tools_available'])}")
+                    print(f"   对话消息数: {status['memory_messages_count']}")
+                    print(f"   回调步骤数: {status['callback_steps']}")
+                    print(f"   最后分析时间: {status.get('last_analysis_time', '无')}")
+                    continue
+                
+                elif user_input.lower() == 'stats':
+                    stats = agent.get_analysis_statistics()
+                    print(f"\n📈 分析统计:")
+                    print(f"   总分析次数: {stats.get('total_analyses', 0)}")
+                    print(f"   成功分析次数: {stats.get('successful_analyses', 0)}")
+                    print(f"   成功率: {stats.get('success_rate', 0):.1f}%")
+                    print(f"   平均处理时间: {stats.get('average_processing_time', 0):.2f}秒")
+                    print(f"   对话长度: {stats.get('conversation_length', 0)}")
+                    
+                    tool_usage = stats.get('tool_usage', {})
+                    if tool_usage:
+                        print(f"   工具使用统计:")
+                        for tool, count in tool_usage.items():
+                            print(f"     {tool}: {count}次")
+                    continue
+                
+                # 处理分析问题
+                print(f"\n🔍 正在分析您的问题...")
+                
+                # 执行分析
+                result = agent.run(user_input)
+                
+                if result['success']:
+                    print(f"\n🤖 分析结果:")
+                    print(f"{result['response']}")
+                    
+                    # 显示处理信息
+                    if args.verbose:
+                        print(f"\n📊 处理信息:")
+                        print(f"   处理时间: {result['processing_time']:.2f}秒")
+                        print(f"   使用工具: {', '.join(result['tools_used']) if result['tools_used'] else '无'}")
+                        
+                        if result.get('analysis_steps'):
+                            print(f"   分析步骤: {len(result['analysis_steps'])}步")
+                    
+                    conversation_count += 1
+                    
+                    # 保存对话记录
+                    if args.save_conversations:
+                        save_conversation(user_input, result, conversation_count, args.conversation_dir)
+                    
+                else:
+                    print(f"\n❌ 分析失败: {result.get('error', '未知错误')}")
+                
+                # 性能优化
+                if conversation_count % 10 == 0:
+                    print("🔧 正在优化性能...")
+                    agent.optimize_performance()
+                
+            except KeyboardInterrupt:
+                print("\n\n💡 检测到 Ctrl+C，正在退出...")
+                print("👋 再见！")
+                break
+            except EOFError:
+                print("\n👋 再见！")
+                break
+            except Exception as e:
+                print(f"\n❌ 处理错误: {e}")
+                if args.debug:
+                    import traceback
+                    traceback.print_exc()
+                continue
+        
+        # 显示会话统计
+        final_stats = agent.get_analysis_statistics()
+        print(f"\n📊 本次会话统计:")
+        print(f"   总问题数: {conversation_count}")
+        print(f"   成功分析: {final_stats.get('successful_analyses', 0)}")
+        print(f"   平均处理时间: {final_stats.get('average_processing_time', 0):.2f}秒")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ 聊天系统启动失败: {e}")
+        if args.debug:
+            import traceback
+            traceback.print_exc()
+        return False
+
+def save_conversation(question: str, result: dict, count: int, conversation_dir: str = None):
+    """保存对话记录"""
+    try:
+        if not conversation_dir:
+            conversation_dir = "logs/conversations"
+        
+        Path(conversation_dir).mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"conversation_{timestamp}_{count:03d}.json"
+        filepath = Path(conversation_dir) / filename
+        
+        conversation_data = {
+            'timestamp': result.get('timestamp'),
+            'question': question,
+            'response': result.get('response'),
+            'processing_time': result.get('processing_time'),
+            'tools_used': result.get('tools_used', []),
+            'success': result.get('success', False),
+            'analysis_steps': result.get('analysis_steps', [])
+        }
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(conversation_data, f, ensure_ascii=False, indent=2, default=str)
+            
+    except Exception as e:
+        print(f"⚠️ 保存对话记录失败: {e}")
+
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(
@@ -1457,6 +1673,12 @@ def main():
   
   # 删除特定职位文档
   python rag_cli.py clear --job-id job123
+  
+  # 启动智能分析聊天
+  python rag_cli.py chat --show-help --verbose
+  
+  # 启动聊天并保存对话记录
+  python rag_cli.py chat --save-conversations --conversation-dir logs/chat
         """
     )
     
@@ -1552,6 +1774,15 @@ def main():
     # 匹配参数
     resume_parser.add_argument('--limit', type=int, default=20, help='匹配职位数量')
     
+    # 智能聊天命令
+    chat_parser = subparsers.add_parser('chat', help='智能分析聊天')
+    chat_parser.add_argument('--agent-config', help='Agent配置文件路径')
+    chat_parser.add_argument('--show-help', action='store_true', help='显示详细帮助信息')
+    chat_parser.add_argument('--verbose', '-v', action='store_true', help='显示详细处理信息')
+    chat_parser.add_argument('--debug', action='store_true', help='调试模式')
+    chat_parser.add_argument('--save-conversations', action='store_true', help='保存对话记录')
+    chat_parser.add_argument('--conversation-dir', default='logs/conversations', help='对话记录保存目录')
+    
     args = parser.parse_args()
     
     # 设置日志
@@ -1581,6 +1812,8 @@ def main():
             success = asyncio.run(match_command(args))
         elif args.command == 'resume':
             success = asyncio.run(resume_command(args))
+        elif args.command == 'chat':
+            success = asyncio.run(chat_command(args))
         else:
             parser.print_help()
             success = False

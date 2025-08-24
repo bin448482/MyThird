@@ -154,7 +154,7 @@ class ContentExtractor:
                         details.append(detail)
                         
                         # 保存单个职位详情到数据库（替代JSON文件）
-                        success = self.data_storage.save_job_detail(detail, job_url)
+                        success = self.data_storage.save_job_detail(detail, job_url, self.current_keyword)
                         if success:
                             self.logger.debug(f"💾 职位详情已保存到数据库: {detail.get('title', '')}")
                         
@@ -1060,7 +1060,7 @@ class ContentExtractor:
                             complete_job = {**job, **detail_info}
                             
                             # 立即保存到数据库
-                            success = self.data_storage.save_job_detail(complete_job, detail_url)
+                            success = self.data_storage.save_job_detail(complete_job, detail_url, self.current_keyword)
                             if success:
                                 results.append(complete_job)
                                 self.logger.info(f"✅ 成功处理并保存: {job.get('title', '')}")
@@ -1145,7 +1145,7 @@ class ContentExtractor:
             for job in new_jobs:
                 try:
                     # 使用数据存储器保存职位信息
-                    success = self.data_storage.save_job_detail(job, job.get('url', ''))
+                    success = self.data_storage.save_job_detail(job, job.get('url', ''), self.current_keyword)
                     if success:
                         results.append(job)
                         self.logger.debug(f"✅ 保存列表职位: {job.get('title', '')} - {job.get('company', '')}")

@@ -66,7 +66,7 @@ rag_system:
     
   # 向量数据库优化
   vector_db:
-    persist_directory: "./data/chroma_db"
+    persist_directory: "./data/test_chroma_db"
     collection_name: "job_documents"
     embeddings:
       model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

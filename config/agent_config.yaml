@@ -1,0 +1,204 @@
+# LangChain Agent 配置文件
+# 就业市场分析智能Agent配置
+
+langchain_agent:
+  # LLM配置
+  llm:
+    provider: "zhipu"  # 支持: zhipu, openai, qwen
+    model: "glm-4-flash"  # 模型名称
+    api_key: "0175134f27a040709d7541e14b4db353.V3KP9u8rZ0oQj9s9"  # API密钥，从环境变量获取
+    temperature: 0.1  # 创造性参数，0-1之间，越低越保守
+    max_tokens: 2000  # 最大输出token数
+    timeout: 30  # 请求超时时间（秒）
+    
+  # Agent配置
+  agent:
+    type: "OPENAI_FUNCTIONS"  # Agent类型
+    verbose: true  # 是否显示详细日志
+    max_iterations: 5  # 最大迭代次数
+    early_stopping_method: "generate"  # 早停策略
+    
+  # 记忆配置
+  memory:
+    type: "ConversationBufferMemory"  # 记忆类型
+    max_token_limit: 2000  # 最大token限制
+    return_messages: true  # 是否返回消息格式
+    
+  # 工具配置
+  tools:
+    # 技能需求分析工具
+    skill_demand_analysis:
+      enabled: true
+      description: "分析技能市场需求和机会"
+      vector_search_enabled: true  # 启用向量搜索增强
+      max_results: 20  # 最大返回结果数
+      similarity_threshold: 0.7  # 相似度阈值
+      
+    # 薪资分析工具
+    salary_analysis:
+      enabled: true
+      description: "分析薪资水平和分布"
+      include_location_analysis: true  # 包含地区分析
+      include_experience_analysis: true  # 包含经验分析
+      trend_analysis_enabled: true  # 启用趋势分析
+      
+    # 趋势分析工具
+    trend_analysis:
+      enabled: true
+      description: "分析市场趋势和变化"
+      time_window_days: 90  # 时间窗口（天）
+      min_data_points: 10  # 最小数据点数
+      trend_detection_sensitivity: 0.1  # 趋势检测敏感度
+      
+    # 竞争力分析工具（待实现）
+    competitiveness_analysis:
+      enabled: false
+      description: "分析职位竞争力和匹配度"
+      
+    # 地区分析工具（待实现）
+    location_analysis:
+      enabled: false
+      description: "分析不同地区的就业市场"
+      
+  # 系统提示词配置
+  system_prompt:
+    # 角色定义
+    role: "专业的就业市场分析师"
+    
+    # 数据来源描述
+    data_source:
+      total_jobs: 445  # 总职位数（动态获取）
+      coverage: "多个技能领域和地区"
+      includes: "薪资、地点、要求等详细信息"
+      enhancement: "基于RAG向量搜索和语义分析"
+      
+    # 核心能力
+    capabilities:
+      - "基于向量搜索的语义分析，发现隐含的技能需求"
+      - "结合传统数据库查询和AI语义理解"
+      - "提供数据驱动的职业建议和市场洞察"
+      - "支持多维度分析：技能、薪资、地区、趋势"
+      
+    # 回答原则
+    principles:
+      - "基于工具返回的真实数据，绝不编造信息"
+      - "提供具体数字和统计信息，包含数据来源"
+      - "结合向量搜索结果和传统分析，给出全面洞察"
+      - "承认数据限制，不夸大结论"
+      - "保持专业客观的语调，提供实用建议"
+      
+    # 特殊能力
+    special_abilities:
+      - "通过向量搜索发现职位间的语义关联"
+      - "识别传统关键词搜索无法发现的技能需求"
+      - "基于语义相似度提供更准确的技能推荐"
+      - "结合市场趋势和个人背景给出个性化建议"
+      
+  # 性能配置
+  performance:
+    # 缓存配置
+    cache:
+      enabled: true
+      ttl: 3600  # 缓存生存时间（秒）
+      max_size: 100  # 最大缓存条目数
+      
+    # 并发配置
+    concurrency:
+      max_concurrent_tools: 3  # 最大并发工具数
+      tool_timeout: 30  # 工具超时时间（秒）
+      
+    # 优化配置
+    optimization:
+      auto_cleanup: true  # 自动清理
+      memory_cleanup_threshold: 50  # 记忆清理阈值
+      callback_history_limit: 25  # 回调历史限制
+      
+  # 日志配置
+  logging:
+    level: "INFO"  # 日志级别
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    file: "logs/agent.log"  # 日志文件路径
+    max_size: "10MB"  # 最大文件大小
+    backup_count: 5  # 备份文件数量
+    
+  # 错误处理配置
+  error_handling:
+    max_retries: 3  # 最大重试次数
+    retry_delay: 1  # 重试延迟（秒）
+    fallback_response: "抱歉，分析过程中遇到了问题，请稍后重试。"
+    
+  # 用户体验配置
+  user_experience:
+    # 响应格式
+    response_format:
+      include_data_source: true  # 包含数据来源
+      include_confidence: true  # 包含置信度
+      include_suggestions: true  # 包含建议
+      max_response_length: 2000  # 最大响应长度
+      
+    # 交互配置
+    interaction:
+      welcome_message: "您好！我是就业市场分析助手，基于445个真实职位数据为您提供专业分析。请问您想了解什么？"
+      help_message: "我可以帮您分析：\n1. 技能需求和市场机会\n2. 薪资水平和分布\n3. 市场趋势和变化\n\n请直接提问，比如：'Python工程师的市场需求如何？'"
+      
+    # 建议问题
+    suggested_questions:
+      - "Python工程师的市场需求如何？"
+      - "前端开发的平均薪资是多少？"
+      - "哪些技能最受欢迎？"
+      - "北京和上海的薪资差异如何？"
+      - "AI相关职位的发展趋势怎样？"
+      - "Java开发者需要掌握哪些技能？"
+      - "数据分析师的就业前景如何？"
+      - "云计算技能的市场价值如何？"
+      
+  # 实验性功能
+  experimental:
+    # 多轮对话增强
+    multi_turn_enhancement:
+      enabled: false
+      context_window: 5  # 上下文窗口大小
+      
+    # 个性化推荐
+    personalized_recommendations:
+      enabled: false
+      user_profile_tracking: false
+      
+    # 实时数据更新
+    real_time_updates:
+      enabled: false
+      update_interval: 3600  # 更新间隔（秒）
+
+# 环境变量配置
+environment:
+  # API密钥环境变量名
+  api_key_env_vars:
+    zhipu: "ZHIPU_API_KEY"
+    openai: "OPENAI_API_KEY"
+    qwen: "QWEN_API_KEY"
+    
+  # 其他环境变量
+  log_level: "AGENT_LOG_LEVEL"
+  debug_mode: "AGENT_DEBUG_MODE"
+  
+# 开发配置
+development:
+  # 调试模式
+  debug:
+    enabled: false
+    verbose_logging: true
+    save_conversations: true
+    conversation_dir: "logs/conversations"
+    
+  # 测试配置
+  testing:
+    mock_llm: false
+    test_data_path: "testdata/agent_test_cases.json"
+    benchmark_mode: false
+    
+  # 性能监控
+  monitoring:
+    enabled: true
+    metrics_collection: true
+    performance_tracking: true
+    export_metrics: false

@@ -6,7 +6,9 @@
 
 - 🤖 **人工登录 + 自动化操作**: 避免验证码和风控检测
 - 🧠 **RAG智能分析**: 使用LangChain和智谱GLM-4-Flash分析职位信息
+- 💬 **智能问答助手**: 基于自然语言的职位市场数据分析
 - 📊 **语义匹配**: 基于向量相似度的深度语义理解和职位匹配
+- 🔄 **端到端自动化**: 从职位搜索到简历投递的完整自动化流程
 - 🛡️ **防反爬机制**: 随机延迟、鼠标轨迹模拟等人类行为
 - 💾 **双重数据存储**: SQLite结构化数据 + ChromaDB向量数据库
 - ⚙️ **模块化架构**: 登录、提取、分析功能完全分离
@@ -69,6 +71,32 @@ python migrate_database_for_rag.py
 ```
 
 ## 📋 主要功能
+
+### 🤖 智能问答助手
+
+最受欢迎的功能！通过自然语言与AI助手对话，获取职位市场分析：
+
+```bash
+# 启动智能问答助手
+python rag_cli.py chat
+```
+
+**示例对话**：
+```
+💬 您的问题: 现在哪个技能在市场上机会最多？
+
+🤖 回答:
+   根据最新的445个职位数据分析，目前市场上机会最多的技能排名如下：
+   • Python - 156个职位 (35.1%市场份额)
+   • Java - 134个职位 (30.1%市场份额)
+   • JavaScript - 98个职位 (22.0%市场份额)
+   
+💬 您的问题: Python开发的平均薪资是多少？
+
+🤖 回答:
+   基于43个职位的薪资数据分析，Python工程师平均月薪13k，年薪约15万元。
+   薪资范围：0k-50k，中位数薪资：5k...
+```
 
 ### 🔧 RAG系统管理
 
@@ -157,36 +185,45 @@ python rag_cli.py resume match \
     --include-analysis
 ```
 
-### 🕷️ 网页内容提取
+### 🚀 端到端集成系统
 
-#### 独立登录测试
+完整的自动化求职流程，从职位搜索到简历投递：
+
 ```bash
-# 基本登录测试
-python test_login.py
+# 基本使用
+python src/integration_main.py -k "Python开发" "数据分析师" -l "北京" "上海"
 
-# 登录并保存会话
-python test_login.py --save-session
+# 干运行模式（推荐测试时使用）
+python src/integration_main.py -k "Python开发" --dry-run
 
-# 检查登录状态
-python test_login.py --check-status
+# 指定简历文件
+python src/integration_main.py -k "Python开发" -r testdata/resume.json
+
+# 健康检查
+python src/integration_main.py --health-check
 ```
 
-#### 内容提取测试
+### 🕷️ 传统网页投递
+
+#### 智联招聘
 ```bash
-# 基于关键词提取
-python test_extraction.py --keyword "AI工程师"
+# 基本投递
+python src/main.py --website zhilian
 
-# 跳过登录检查（开发模式）
-python test_extraction.py --keyword "数据架构师" --skip-login
-
-# 批量提取多个关键词
-python test_extraction.py --multiple "AI工程师,数据架构师,Python工程师"
+# 试运行模式
+python src/main.py --website zhilian --dry-run
 ```
 
-#### 完整内容提取测试
+#### Boss直聘
 ```bash
-# 运行完整的内容提取测试
-python test_content_extractor_complete.py
+# Boss直聘投递
+python src/main.py --website boss --debug
+```
+
+#### 前程无忧
+```bash
+# 前程无忧投递
+python src/main.py --website qiancheng --config custom_config.yaml
 ```
 
 ### 🧪 测试系统
@@ -213,6 +250,9 @@ python test_rag_performance_benchmark.py
 
 # 错误场景测试
 python test_rag_error_scenarios.py
+
+# Agent测试
+python test_langchain_agent.py
 ```
 
 #### 快速测试
@@ -222,6 +262,9 @@ python quick_vector_test.py
 
 # 验证数据库内容
 python verify_database.py
+
+# 集成验证
+python verify_integration.py
 ```
 
 ## 🏗️ 系统架构
@@ -230,6 +273,11 @@ python verify_database.py
 
 ```
 智能简历投递系统
+├── 🤖 智能问答助手 (rag_cli.py chat)
+│   ├── LangChain Agent (src/analysis_tools/agent.py)
+│   ├── 技能需求分析工具 (skill_demand_tool.py)
+│   ├── 薪资分析工具 (salary_analysis_tool.py)
+│   └── 趋势分析工具 (trend_analysis_tool.py)
 ├── 🔐 认证模块 (src/auth/)
 │   ├── 浏览器管理 (browser_manager.py)
 │   ├── 登录管理 (login_manager.py)
@@ -257,6 +305,13 @@ python verify_database.py
 │   ├── 语义评分 (semantic_scorer.py)
 │   ├── 通用简历匹配 (generic_resume_matcher.py)
 │   └── 多维度评分 (multi_dimensional_scorer.py)
+├── 🚀 集成系统 (src/integration/)
+│   ├── 统一主控制器 (master_controller.py)
+│   ├── 数据传递接口 (data_bridge.py)
+│   ├── 作业调度器 (job_scheduler.py)
+│   ├── 智能决策引擎 (decision_engine.py)
+│   ├── 自动投递引擎 (auto_submission_engine.py)
+│   └── 监控系统 (monitoring.py)
 ├── 💾 数据库模块 (src/database/)
 │   ├── 数据模型 (models.py)
 │   ├── 数据库操作 (operations.py)
@@ -283,6 +338,11 @@ graph TD
     J --> K[RAG处理]
     K --> L[结构化数据]
     L --> G
+    
+    M[自然语言问题] --> N[LangChain Agent]
+    N --> O[分析工具]
+    O --> P[数据分析]
+    P --> Q[智能回答]
 ```
 
 ## ⚙️ 配置说明
@@ -301,7 +361,7 @@ rag_system:
     max_tokens: 2000
   
   vector_db:
-    persist_directory: "./chroma_db"
+    persist_directory: "./data/test_chroma_db"
     collection_name: "job_positions"
   
   processing:
@@ -338,20 +398,40 @@ matching:
     fair: 0.50
 ```
 
-#### config/resume_matching_config.yaml - 简历匹配配置
+#### config/agent_config.yaml - Agent配置
 ```yaml
-resume_matching:
-  skills_weights:
-    RAG: 2.0
-    AI/ML: 1.9
-    Azure: 1.8
-    LangChain: 1.8
-    Python: 1.6
-    
-  performance:
-    batch_size: 50
-    max_candidates: 100
-    cache_ttl: 3600
+langchain_agent:
+  llm:
+    provider: "zhipu"
+    model: "glm-4-flash"
+    temperature: 0.1
+    max_tokens: 2000
+  
+  tools:
+    skill_demand_analysis:
+      enabled: true
+      default_limit: 20
+    salary_analysis:
+      enabled: true
+      include_percentiles: true
+    trend_analysis:
+      enabled: true
+      default_period_days: 30
+```
+
+#### config/integration_config.yaml - 集成配置
+```yaml
+integration_system:
+  master_controller:
+    max_concurrent_jobs: 10
+    checkpoint_interval: 100
+    error_retry_attempts: 3
+  
+  auto_submission:
+    enabled: true
+    dry_run_mode: true  # 测试时设为true
+    max_submissions_per_day: 50
+    submission_delay: 5
 ```
 
 ## 📊 使用示例
@@ -379,6 +459,23 @@ async def main():
 asyncio.run(main())
 ```
 
+#### 智能问答使用
+```python
+from src.analysis_tools.agent import JobMarketAnalysisAgent
+from src.rag.rag_system_coordinator import RAGSystemCoordinator
+
+# 初始化系统
+coordinator = RAGSystemCoordinator()
+coordinator.initialize_system()
+
+# 创建Agent
+agent = JobMarketAnalysisAgent(coordinator)
+
+# 进行分析
+response = agent.analyze("Python工程师的市场需求如何？")
+print(response)
+```
+
 #### 简历匹配使用
 ```python
 from src.matcher.generic_resume_matcher import GenericResumeJobMatcher
@@ -402,15 +499,33 @@ for match in matches:
     print(f"公司: {match['company']}")
 ```
 
-#### 内容提取使用
+#### 端到端集成使用
 ```python
-from src.extraction.content_extractor import ContentExtractor
+import asyncio
+from src.integration_main import IntegratedResumeSystem
 
-# 独立内容提取
-config = {'mode': {'skip_login': True}}
-with ContentExtractor(config) as extractor:
-    results = extractor.extract_from_keyword("AI工程师", max_results=30)
-    print(f"提取到 {len(results)} 个职位")
+async def main():
+    # 创建系统实例
+    system = IntegratedResumeSystem()
+    
+    # 准备简历档案
+    resume_profile = {
+        'name': '张三',
+        'skills': ['Python', '机器学习', '数据分析'],
+        'experience': '3年',
+        'location_preference': ['北京', '上海']
+    }
+    
+    # 运行流水线
+    result = await system.run_pipeline(
+        search_keywords=['Python开发', '数据分析师'],
+        resume_profile=resume_profile,
+        submission_config={'dry_run_mode': True}
+    )
+    
+    print(f"执行结果: {result}")
+
+asyncio.run(main())
 ```
 
 ### 简历格式示例
@@ -541,13 +656,19 @@ python rag_cli.py analyze --type skills --output skills_analysis.json
 #### 3. 向量数据库权限错误
 ```
 错误: PermissionError: Permission denied
-解决: 检查chroma_db目录权限，或使用管理员权限运行
+解决: 检查data/test_chroma_db目录权限，或使用管理员权限运行
 ```
 
 #### 4. 内存不足
 ```
 错误: MemoryError: Out of memory
 解决: 减少批处理大小 --batch-size 10，或增加系统内存
+```
+
+#### 5. Agent工具调用失败
+```
+错误: Tool execution failed
+解决: 检查工具注册和LLM配置，确保API密钥正确
 ```
 
 ### 调试模式
@@ -557,6 +678,9 @@ python rag_cli.py --verbose pipeline run
 
 # 启用调试模式
 python rag_cli.py --debug test --test-search
+
+# Agent调试
+python rag_cli.py chat --verbose
 ```
 
 ### 日志查看
@@ -566,6 +690,9 @@ tail -f logs/rag_system.log
 
 # 查看错误日志
 grep ERROR logs/rag_system.log
+
+# 查看Agent日志
+tail -f logs/agent.log
 ```
 
 ## 🔄 更新和维护
@@ -585,7 +712,7 @@ python migrate_database_for_rag.py --upgrade
 cp data/jobs.db data/jobs_backup_$(date +%Y%m%d).db
 
 # 备份向量数据库
-cp -r chroma_db chroma_db_backup_$(date +%Y%m%d)
+cp -r data/test_chroma_db data/test_chroma_db_backup_$(date +%Y%m%d)
 ```
 
 ### 清理和维护
@@ -614,6 +741,12 @@ python rag_cli.py optimize --vacuum-db --rebuild-index
 1. 在 `src/rag/llm_factory.py` 中添加新的LLM适配器
 2. 实现LangChain兼容的接口
 3. 在配置文件中添加新的LLM配置选项
+
+### 添加新的分析工具
+1. 继承 `BaseAnalysisTool` 类
+2. 实现必需的字段和方法
+3. 在Agent中注册新工具
+4. 更新配置文件
 
 ## 🤝 贡献指南
 
@@ -650,6 +783,15 @@ MIT License
 
 ---
 
-**最后更新**: 2025-08-22  
-**版本**: v2.0.0  
+**最后更新**: 2025-08-24  
+**版本**: v3.0.0  
 **维护者**: Claude Code Assistant
+
+## 🎯 快速导航
+
+- [智能问答助手](#-智能问答助手) - 最受欢迎的功能
+- [RAG系统管理](#-rag系统管理) - 核心数据处理
+- [简历匹配系统](#-简历匹配系统) - 智能匹配功能
+- [端到端集成](#-端到端集成系统) - 完整自动化流程
+- [配置说明](#-配置说明) - 系统配置指南
+- [故障排除](#-故障排除) - 常见问题解决

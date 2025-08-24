@@ -725,13 +725,14 @@ class DataStorage:
             self.logger.error(f"保存职位详细信息失败: {e}")
             return False
     
-    def save_job_detail(self, detail_data: Dict[str, Any], job_url: str) -> bool:
+    def save_job_detail(self, detail_data: Dict[str, Any], job_url: str, keyword: str = None) -> bool:
         """
         保存单个职位详情到数据库（替代JSON文件保存）
         
         Args:
             detail_data: 职位详情数据
             job_url: 职位URL
+            keyword: 搜索关键词，如果为None则从detail_data中提取或使用默认值
             
         Returns:
             是否保存成功
@@ -779,9 +780,12 @@ class DataStorage:
             success = db_manager.save_job(job_data)
             
             if success:
+                # 确定要使用的关键词
+                actual_keyword = keyword or detail_data.get('search_keyword') or detail_data.get('keyword') or 'unknown'
+                
                 # 保存详细信息
-                self._save_job_details_with_fingerprint(detail_data, job_id, job_fingerprint, "detail_extraction")
-                self.logger.info(f"职位详情已保存到数据库: {detail_data.get('title', '')}")
+                self._save_job_details_with_fingerprint(detail_data, job_id, job_fingerprint, actual_keyword)
+                self.logger.info(f"职位详情已保存到数据库: {detail_data.get('title', '')} (keyword: {actual_keyword})")
             
             return success
                 
