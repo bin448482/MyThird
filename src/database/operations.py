@@ -704,7 +704,11 @@ class DatabaseManager:
     
     def save_resume_match(self, match_data: Dict[str, Any]) -> bool:
         """
-        保存简历匹配结果（如果job_id存在则更新）
+        保存简历匹配结果（智能处理已投递职位）
+        
+        逻辑：
+        - 对于已投递的职位（processed=1）：跳过，不更新
+        - 对于未投递的职位：正常插入或更新
         
         Args:
             match_data: 匹配结果数据
@@ -720,23 +724,28 @@ class DatabaseManager:
                 resume_profile_id = match_data.get('resume_profile_id', 'default')
                 now = datetime.now().isoformat()
                 
-                # 检查是否已存在相同job_id和resume_profile_id的记录
+                # 检查是否已存在相同job_id和resume_profile_id的记录，以及是否已投递
                 cursor.execute("""
-                    SELECT id FROM resume_matches
+                    SELECT id, processed FROM resume_matches
                     WHERE job_id = ? AND resume_profile_id = ?
                 """, (job_id, resume_profile_id))
                 
                 existing_record = cursor.fetchone()
                 
+                # 如果记录已存在且已投递，跳过处理
+                if existing_record and existing_record['processed'] == 1:
+                    self.logger.debug(f"跳过已投递职位的匹配记录更新: {job_id}")
+                    return True  # 返回True表示操作"成功"（虽然是跳过）
+                
                 if existing_record:
-                    # 更新现有记录
+                    # 更新现有记录（仅未投递的）
                     sql = """
                     UPDATE resume_matches SET
                         match_score = ?, priority_level = ?, semantic_score = ?,
                         skill_match_score = ?, experience_match_score = ?,
                         location_match_score = ?, salary_match_score = ?,
-                        match_details = ?, match_reasons = ?, created_at = ?
-                    WHERE job_id = ? AND resume_profile_id = ?
+                        match_details = ?, match_reasons = ?, created_at = ?, processed = 0
+                    WHERE job_id = ? AND resume_profile_id = ? AND (processed = 0 OR processed IS NULL)
                     """
                     
                     cursor.execute(sql, (
@@ -754,15 +763,18 @@ class DatabaseManager:
                         resume_profile_id
                     ))
                     
-                    self.logger.debug(f"更新简历匹配结果成功: {job_id}")
+                    if cursor.rowcount > 0:
+                        self.logger.debug(f"更新简历匹配结果成功: {job_id}")
+                    else:
+                        self.logger.debug(f"匹配记录已投递，跳过更新: {job_id}")
                 else:
                     # 插入新记录
                     sql = """
                     INSERT INTO resume_matches
                     (job_id, resume_profile_id, match_score, priority_level, semantic_score,
                      skill_match_score, experience_match_score, location_match_score,
-                     salary_match_score, match_details, match_reasons, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     salary_match_score, match_details, match_reasons, created_at, processed)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
                     """
                     
                     cursor.execute(sql, (
@@ -791,7 +803,11 @@ class DatabaseManager:
     
     def batch_save_resume_matches(self, matches: List[Dict[str, Any]]) -> int:
         """
-        批量保存简历匹配结果（先删除相同job_id的记录再插入）
+        批量保存简历匹配结果（智能处理已投递职位）
+        
+        逻辑：
+        - 对于未投递的职位：删除旧匹配记录，插入新记录
+        - 对于已投递的职位（processed=1）：跳过，不删除不添加
         
         Args:
             matches: 匹配结果列表
@@ -800,6 +816,7 @@ class DatabaseManager:
             成功保存的数量
         """
         success_count = 0
+        skipped_count = 0
         
         try:
             with self.get_connection() as conn:
@@ -809,48 +826,85 @@ class DatabaseManager:
                 # 收集所有job_id和resume_profile_id
                 job_profile_pairs = [(match['job_id'], match.get('resume_profile_id', 'default')) for match in matches]
                 
-                # 先删除相同job_id和resume_profile_id的现有记录
+                # 检查哪些匹配记录已经被处理过（已投递）
+                processed_jobs = set()
                 if job_profile_pairs:
-                    delete_sql = "DELETE FROM resume_matches WHERE job_id = ? AND resume_profile_id = ?"
+                    # 逐个查询已处理的匹配记录（SQLite不支持元组IN查询）
                     for job_id, profile_id in job_profile_pairs:
-                        cursor.execute(delete_sql, (job_id, profile_id))
+                        cursor.execute("""
+                            SELECT job_id, resume_profile_id FROM resume_matches
+                            WHERE job_id = ? AND resume_profile_id = ? AND processed = 1
+                        """, (job_id, profile_id))
+                        
+                        result = cursor.fetchone()
+                        if result:
+                            processed_jobs.add((result['job_id'], result['resume_profile_id']))
                     
-                    deleted_count = cursor.rowcount
-                    if deleted_count > 0:
-                        self.logger.info(f"删除了 {deleted_count} 条现有匹配记录")
+                    if processed_jobs:
+                        self.logger.info(f"发现 {len(processed_jobs)} 个已投递的职位，将跳过处理")
                 
-                # 插入新记录
-                insert_sql = """
-                INSERT INTO resume_matches
-                (job_id, resume_profile_id, match_score, priority_level, semantic_score,
-                 skill_match_score, experience_match_score, location_match_score,
-                 salary_match_score, match_details, match_reasons, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """
-                
+                # 分离需要处理和需要跳过的匹配记录
+                matches_to_process = []
                 for match_data in matches:
-                    try:
-                        cursor.execute(insert_sql, (
-                            match_data['job_id'],
-                            match_data.get('resume_profile_id', 'default'),
-                            match_data['match_score'],
-                            match_data['priority_level'],
-                            match_data.get('semantic_score'),
-                            match_data.get('skill_match_score'),
-                            match_data.get('experience_match_score'),
-                            match_data.get('location_match_score'),
-                            match_data.get('salary_match_score'),
-                            match_data.get('match_details'),
-                            match_data.get('match_reasons'),
-                            now
-                        ))
-                        success_count += 1
-                    except Exception as e:
-                        self.logger.warning(f"保存单个匹配结果失败: {e}")
-                        continue
+                    job_id = match_data['job_id']
+                    profile_id = match_data.get('resume_profile_id', 'default')
+                    
+                    if (job_id, profile_id) in processed_jobs:
+                        skipped_count += 1
+                        self.logger.debug(f"跳过已投递职位的匹配记录: {job_id}")
+                    else:
+                        matches_to_process.append(match_data)
+                
+                # 对于未投递的职位，删除旧记录
+                if matches_to_process:
+                    unprocessed_pairs = [(match['job_id'], match.get('resume_profile_id', 'default'))
+                                       for match in matches_to_process]
+                    
+                    delete_sql = """
+                        DELETE FROM resume_matches
+                        WHERE job_id = ? AND resume_profile_id = ? AND (processed = 0 OR processed IS NULL)
+                    """
+                    deleted_count = 0
+                    for job_id, profile_id in unprocessed_pairs:
+                        cursor.execute(delete_sql, (job_id, profile_id))
+                        deleted_count += cursor.rowcount
+                    
+                    if deleted_count > 0:
+                        self.logger.info(f"删除了 {deleted_count} 条未投递职位的旧匹配记录")
+                
+                # 插入新记录（仅未投递的职位）
+                if matches_to_process:
+                    insert_sql = """
+                    INSERT INTO resume_matches
+                    (job_id, resume_profile_id, match_score, priority_level, semantic_score,
+                     skill_match_score, experience_match_score, location_match_score,
+                     salary_match_score, match_details, match_reasons, created_at, processed)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                    """
+                    
+                    for match_data in matches_to_process:
+                        try:
+                            cursor.execute(insert_sql, (
+                                match_data['job_id'],
+                                match_data.get('resume_profile_id', 'default'),
+                                match_data['match_score'],
+                                match_data['priority_level'],
+                                match_data.get('semantic_score'),
+                                match_data.get('skill_match_score'),
+                                match_data.get('experience_match_score'),
+                                match_data.get('location_match_score'),
+                                match_data.get('salary_match_score'),
+                                match_data.get('match_details'),
+                                match_data.get('match_reasons'),
+                                now
+                            ))
+                            success_count += 1
+                        except Exception as e:
+                            self.logger.warning(f"保存单个匹配结果失败: {e}")
+                            continue
                 
                 conn.commit()
-                self.logger.info(f"批量保存简历匹配结果: {success_count}/{len(matches)} 成功")
+                self.logger.info(f"批量保存简历匹配结果: {success_count} 新增, {skipped_count} 跳过 (已投递)")
                 
         except Exception as e:
             self.logger.error(f"批量保存简历匹配结果失败: {e}")

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
 测试 MasterController 的 run_full_pipeline 方法
-测试配置：2页，总40个职位
+测试配置：2页，每页20条，总40个职位
 """
 
 import asyncio
 import logging
 import yaml
 import json
+import signal
+import sys
 from datetime import datetime
 from src.integration.master_controller import MasterController, PipelineConfig
 
@@ -16,6 +18,14 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
+# 全局变量用于控制程序终止
+shutdown_event = asyncio.Event()
+
+def signal_handler(signum, frame):
+    """信号处理器 - 处理 Ctrl+C"""
+    print(f"\n🛑 接收到中断信号 ({signum})，正在优雅地停止程序...")
+    shutdown_event.set()
 
 async def test_master_controller():
     """测试 MasterController 的完整流水线"""
@@ -51,10 +61,11 @@ async def test_master_controller():
     
     # 配置流水线参数
     pipeline_config = PipelineConfig(
-        search_keywords=["AI", "Python", ".net", "Azure", "数据工程师"],    # 5个关键词
+        # search_keywords=["AI", "Python", ".net", "Azure", "数据工程师"],    # 5个关键词
+        search_keywords=["AI"],  # 修改为AI，与你的配置一致
         search_locations=["上海"],
-        max_jobs_per_keyword=100,  # 总100个职位
-        max_pages=5,              # 测试5页
+        max_jobs_per_keyword=40,  # 总40个职位（2页 × 20条/页）
+        max_pages=2,              # 测试2页
         resume_profile=resume_profile,
         decision_criteria={
             "min_salary": 15000,
@@ -68,9 +79,10 @@ async def test_master_controller():
     
     print(f"📊 测试参数:")
     print(f"   关键词: {pipeline_config.search_keywords}")
-    print(f"   最大职位数: {pipeline_config.max_jobs_per_keyword}")
+    print(f"   每个关键词最大职位数: {pipeline_config.max_jobs_per_keyword}")
     print(f"   最大页数: {pipeline_config.max_pages}")
-    print(f"   预期总职位数: {pipeline_config.max_jobs_per_keyword}")
+    print(f"   预期每页职位数: ~20条")
+    print(f"   预期总职位数: {pipeline_config.max_jobs_per_keyword} (2页 × 20条/页)")
     print()
     
     # 记录开始时间
@@ -78,8 +90,41 @@ async def test_master_controller():
     print(f"⏰ 开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     
     try:
+        # 注册信号处理器
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
+        print("💡 提示: 按 Ctrl+C 可以随时终止程序")
+        print()
+        
         # 执行完整流水线
-        report = await controller.run_full_pipeline(pipeline_config)
+        pipeline_task = asyncio.create_task(controller.run_full_pipeline(pipeline_config))
+        shutdown_task = asyncio.create_task(shutdown_event.wait())
+        
+        # 等待流水线完成或收到中断信号
+        done, pending = await asyncio.wait(
+            [pipeline_task, shutdown_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        # 如果是中断信号，取消流水线任务
+        if shutdown_event.is_set():
+            print("🛑 正在取消流水线任务...")
+            pipeline_task.cancel()
+            try:
+                await pipeline_task
+            except asyncio.CancelledError:
+                print("✅ 流水线任务已取消")
+            
+            # 取消其他待处理任务
+            for task in pending:
+                task.cancel()
+            
+            print("🔄 程序已优雅地终止")
+            return None
+        
+        # 正常完成，获取结果
+        report = pipeline_task.result()
         
         # 记录结束时间
         end_time = datetime.now()

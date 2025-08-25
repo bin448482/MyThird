@@ -16,7 +16,7 @@ from src.integration.master_controller import MasterController, PipelineConfig
 from src.integration.data_bridge import DataBridge
 from src.integration.job_scheduler import JobScheduler
 from src.integration.decision_engine import DecisionEngine
-from src.integration.auto_submission_engine import AutoSubmissionEngine
+from src.integration.submission_integration import SubmissionIntegration
 from src.integration.error_handler import ErrorHandler
 from src.integration.monitoring import PipelineMonitor
 
@@ -346,8 +346,8 @@ class TestAutoSubmissionEngine:
     """自动投递引擎测试"""
     
     @pytest.mark.asyncio
-    async def test_auto_submission_engine_initialization(self, test_config):
-        """测试自动投递引擎初始化"""
+    async def test_submission_integration_initialization(self, test_config):
+        """测试投递集成模块初始化"""
         engine = AutoSubmissionEngine(test_config)
         
         assert engine.config == test_config

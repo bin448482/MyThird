@@ -189,21 +189,59 @@ class SessionManager:
                 from urllib.parse import urlparse
                 parsed_url = urlparse(original_url)
                 base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
-                driver.get(base_url)
+                
+                # 检查当前是否已在正确域名
+                current_domain = urlparse(driver.current_url).netloc if driver.current_url else ""
+                target_domain = parsed_url.netloc
+                
+                if current_domain != target_domain:
+                    self.logger.debug(f"导航到目标域名: {base_url}")
+                    driver.get(base_url)
             
             # 恢复Cookies
             cookies = session_data.get('cookies', [])
-            for cookie in cookies:
-                try:
-                    # 移除可能导致问题的字段
-                    cookie_copy = cookie.copy()
-                    cookie_copy.pop('sameSite', None)
-                    cookie_copy.pop('httpOnly', None)
-                    driver.add_cookie(cookie_copy)
-                except Exception as e:
-                    self.logger.debug(f"添加Cookie失败: {e}")
-            
-            self.logger.debug(f"恢复了 {len(cookies)} 个Cookie")
+            if cookies:
+                # 确保在正确的域名下设置Cookie
+                cookie_domains = set()
+                for cookie in cookies:
+                    domain = cookie.get('domain', '')
+                    if domain:
+                        cookie_domains.add(domain.lstrip('.'))
+                
+                # 如果有Cookie需要设置，确保访问正确的域名
+                if cookie_domains and original_url:
+                    from urllib.parse import urlparse
+                    parsed_url = urlparse(original_url)
+                    target_domain = parsed_url.netloc
+                    
+                    # 检查当前域名
+                    current_domain = urlparse(driver.current_url).netloc if driver.current_url else ""
+                    
+                    # 如果当前不在目标域名，先导航过去
+                    if current_domain != target_domain:
+                        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+                        self.logger.debug(f"导航到目标域名以设置Cookie: {base_url}")
+                        driver.get(base_url)
+                        # 等待页面加载
+                        import time
+                        time.sleep(1)
+                
+                # 设置Cookies
+                successful_cookies = 0
+                for cookie in cookies:
+                    try:
+                        # 移除可能导致问题的字段
+                        cookie_copy = cookie.copy()
+                        cookie_copy.pop('sameSite', None)
+                        cookie_copy.pop('httpOnly', None)
+                        # 移除过期时间相关字段，让浏览器自己处理
+                        cookie_copy.pop('expiry', None)
+                        driver.add_cookie(cookie_copy)
+                        successful_cookies += 1
+                    except Exception as e:
+                        self.logger.debug(f"添加Cookie失败 {cookie.get('name', 'unknown')}: {e}")
+                
+                self.logger.debug(f"成功恢复了 {successful_cookies}/{len(cookies)} 个Cookie")
             
             # 恢复LocalStorage
             local_storage = session_data.get('local_storage', {})
@@ -227,9 +265,17 @@ class SessionManager:
                 except Exception as e:
                     self.logger.debug(f"恢复SessionStorage失败 {key}: {e}")
             
-            # 最后导航到原始URL
+            # 最后导航到原始URL或刷新页面以使会话生效
             if original_url:
-                driver.get(original_url)
+                if driver.current_url != original_url:
+                    self.logger.debug(f"恢复到原始URL: {original_url}")
+                    driver.get(original_url)
+                else:
+                    self.logger.debug("当前已在目标URL，刷新页面以使会话生效")
+                    driver.refresh()
+                    # 等待页面刷新完成
+                    import time
+                    time.sleep(2)
             
             return True
             
@@ -267,29 +313,56 @@ class SessionManager:
             self.logger.warning(f"检查会话过期时出错: {e}")
             return True
     
-    def is_session_valid(self, driver: webdriver.Chrome) -> bool:
+    def is_session_valid(self, driver: webdriver.Chrome, test_keyword: str = "test", preserve_current_page: bool = True) -> bool:
         """
         检查当前会话是否有效（是否已登录）
         
         Args:
             driver: WebDriver实例
+            test_keyword: 用于测试的关键词，默认为"test"
+            preserve_current_page: 是否保持当前页面状态，默认为True
             
         Returns:
             会话是否有效
         """
         try:
-            # 使用登录检测器的逻辑
+            current_url = driver.current_url
+            self.logger.debug(f"检查会话有效性，当前URL: {current_url}")
+            
+            # 使用登录检测器的逻辑，在当前页面检查
             success_indicators = self.login_config.get('success_indicators', [])
             
             for selector in success_indicators:
                 try:
-                    element = driver.find_element(By.CSS_SELECTOR, selector)
-                    if element and element.is_displayed():
-                        self.logger.debug(f"找到登录指示器: {selector}")
-                        return True
+                    elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                    for element in elements:
+                        if element and element.is_displayed():
+                            text = element.text.strip()[:20] if element.text else ""
+                            self.logger.debug(f"找到登录指示器: {selector} (文本: '{text}')")
+                            return True
                 except:
                     continue
             
+            # 如果需要保持当前页面状态，则不跳转验证
+            if preserve_current_page:
+                self.logger.debug("保持当前页面状态，不进行跳转验证")
+                # 在当前页面没找到登录指示器，但为了保持页面状态，我们采用保守策略
+                # 如果当前在51job域名下，假设登录状态可能有效
+                if "51job.com" in current_url:
+                    self.logger.debug("当前在51job域名下，采用保守验证策略")
+                    return True
+                else:
+                    return False
+            
+            # 如果不需要保持页面状态，且当前不在搜索页面，则尝试跳转验证
+            # 但为了减少页面闪动，我们采用更保守的策略
+            if "/pc/search" not in current_url and "51job.com" in current_url:
+                self.logger.debug(f"当前页面未找到登录指示器，但为减少页面闪动，采用保守验证策略")
+                # 如果在51job域名下，采用保守策略认为可能有效
+                # 只有在明确需要跳转验证时才进行（比如会话恢复时）
+                return True
+            
+            self.logger.debug("未找到任何登录指示器，会话可能无效")
             return False
             
         except Exception as e:

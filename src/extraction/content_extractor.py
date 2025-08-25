@@ -60,6 +60,10 @@ class ContentExtractor:
         self.url_builder = SearchURLBuilder(config)
         self.behavior_simulator = None  # 延迟初始化，需要driver实例
         
+        # 添加登录模式控制器 - 新增部分
+        from ..auth.login_mode_controller import LoginModeController
+        self.login_controller = LoginModeController(config, self.browser_manager)
+        
         self.logger = logging.getLogger(__name__)
         
         # 状态管理
@@ -74,9 +78,10 @@ class ContentExtractor:
                            max_results: Optional[int] = None,
                            save_results: bool = True,
                            extract_details: bool = False,
-                           max_pages: Optional[int] = None) -> List[Dict[str, Any]]:
+                           max_pages: Optional[int] = None,
+                           max_retry_attempts: int = 2) -> List[Dict[str, Any]]:
         """
-        根据关键词提取职位信息（支持多页）
+        根据关键词提取职位信息（支持登录模式和重试机制）
         
         Args:
             keyword: 搜索关键词
@@ -84,28 +89,69 @@ class ContentExtractor:
             save_results: 是否保存结果
             extract_details: 是否提取详情页内容
             max_pages: 最大页数，如果为None则使用配置中的值
+            max_retry_attempts: 最大重试次数
             
         Returns:
             提取的职位信息列表
         """
-        try:
-            # 构建搜索URL
-            search_url = self.url_builder.build_search_url(keyword)
-            self.logger.info(f"🔍 使用关键词 '{keyword}' 构建搜索URL: {search_url}")
-            
-            # 提取内容
-            return self.extract_from_search_url(
-                search_url,
-                keyword=keyword,
-                max_results=max_results,
-                save_results=save_results,
-                extract_details=extract_details,
-                max_pages=max_pages
-            )
-            
-        except Exception as e:
-            self.logger.error(f"❌ 基于关键词的内容提取失败: {e}")
-            raise ContentExtractionError(f"基于关键词的内容提取失败: {e}")
+        retry_count = 0
+        
+        while retry_count <= max_retry_attempts:
+            try:
+                if retry_count > 0:
+                    self.logger.info(f"🔄 第 {retry_count + 1} 次尝试提取关键词 '{keyword}' 的职位信息")
+                else:
+                    self.logger.info(f"🚀 开始提取关键词 '{keyword}' 的职位信息")
+                
+                # 新增：检查并启动登录模式
+                if self.login_controller.is_login_mode_enabled():
+                    self.logger.info("🔐 启用登录模式，开始登录工作流...")
+                    login_success = self.login_controller.start_login_workflow(keyword)
+                    if not login_success:
+                        raise ContentExtractionError("登录失败，无法继续提取")
+                    self.logger.info("✅ 登录成功，继续内容提取")
+                else:
+                    self.logger.info("🔓 使用无登录模式进行内容提取")
+                
+                # 构建搜索URL
+                search_url = self.url_builder.build_search_url(keyword)
+                self.logger.info(f"🔍 使用关键词 '{keyword}' 构建搜索URL: {search_url}")
+                
+                # 提取内容
+                return self.extract_from_search_url(
+                    search_url,
+                    keyword=keyword,
+                    max_results=max_results,
+                    save_results=save_results,
+                    extract_details=extract_details,
+                    max_pages=max_pages
+                )
+                
+            except ContentExtractionError as e:
+                error_msg = str(e)
+                if "登录状态丢失" in error_msg and retry_count < max_retry_attempts:
+                    retry_count += 1
+                    self.logger.warning(f"⚠️ 登录状态丢失，准备第 {retry_count + 1} 次重试...")
+                    
+                    # 清理当前状态，准备重试
+                    try:
+                        # 重置浏览器会话
+                        if hasattr(self, 'browser_manager') and self.browser_manager:
+                            self.browser_manager.quit_driver()
+                            time.sleep(2)  # 等待浏览器完全关闭
+                    except:
+                        pass
+                    
+                    continue
+                else:
+                    self.logger.error(f"❌ 基于关键词的内容提取失败: {e}")
+                    raise
+            except Exception as e:
+                self.logger.error(f"❌ 基于关键词的内容提取失败: {e}")
+                raise ContentExtractionError(f"基于关键词的内容提取失败: {e}")
+        
+        # 如果所有重试都失败
+        raise ContentExtractionError(f"经过 {max_retry_attempts + 1} 次尝试后仍然失败")
     
     def extract_job_details(self, job_urls: List[str]) -> List[Dict[str, Any]]:
         """
@@ -473,7 +519,7 @@ class ContentExtractor:
                 driver = self.browser_manager.create_driver()
             
             if self.session_manager.load_session(driver, session_file):
-                if self.session_manager.is_session_valid(driver):
+                if self.session_manager.is_session_valid(driver, self.current_keyword or "test"):
                     self.logger.info("✅ 会话加载成功")
                     return True
                 else:
@@ -684,10 +730,39 @@ class ContentExtractor:
         """
         return self.extraction_results.copy()
     
+    def get_login_status_summary(self) -> Dict[str, Any]:
+        """
+        获取登录状态摘要信息
+        
+        Returns:
+            登录状态摘要字典
+        """
+        try:
+            # 获取基本提取摘要
+            basic_summary = self.get_extraction_summary()
+            
+            # 获取登录状态信息
+            login_status = self.login_controller.get_login_status_summary()
+            
+            # 合并信息
+            return {
+                **basic_summary,
+                'login_status': login_status,
+                'extraction_mode': 'login_mode' if login_status.get('login_mode_enabled', False) else 'anonymous_mode'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"获取登录状态摘要失败: {e}")
+            return self.get_extraction_summary()
+    
     def close(self) -> None:
         """关闭内容提取器，清理资源"""
         try:
             self.logger.info("🧹 关闭内容提取器")
+            
+            # 关闭登录控制器
+            if hasattr(self, 'login_controller') and self.login_controller:
+                self.login_controller.close()
             
             # 如果配置了重用会话，不关闭浏览器
             if not self.mode_config.get('close_on_complete', True):
@@ -952,7 +1027,7 @@ class ContentExtractor:
     
     def _extract_new_jobs_details_immediately(self, driver, new_jobs_with_elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        立即提取新职位的详情信息（修复逻辑错误）
+        立即提取新职位的详情信息（增强登录状态保护）
         
         Args:
             driver: WebDriver实例
@@ -982,6 +1057,7 @@ class ContentExtractor:
                 self.logger.info(f"🎯 处理第 {job_index+1}/{len(new_jobs_with_elements)} 个新职位: {job_title}")
                 
                 try:
+                    # 移除详情页登录状态检查，因为有重复检测机制保护
                     # 记录当前窗口句柄
                     original_windows = driver.window_handles
                     
@@ -1072,6 +1148,12 @@ class ContentExtractor:
                         # 关闭新窗口并切换回原窗口
                         driver.close()
                         driver.switch_to.window(original_windows[0])
+                        
+                        # 新增：登录模式下的延迟
+                        if self.login_controller.is_login_mode_enabled():
+                            # 添加延迟，避免反爬虫检测
+                            delay = self.login_controller.login_config.get('detail_page_delay', 3.0)
+                            time.sleep(delay)
                         
                         # 思考时间 - COMMENTED FOR SPEED
                         # think_time = random.uniform(0.5, 2.0)
@@ -1531,6 +1613,13 @@ class ContentExtractor:
                     # 导航到下一页
                     if current_page < max_pages:
                         self.logger.info(f"➡️ 准备进入第 {current_page + 1} 页")
+                        
+                        # 新增：页面跳转前检查登录状态
+                        if self.login_controller.is_login_mode_enabled():
+                            if not self.login_controller.validate_login_before_page_navigation(self.current_keyword):
+                                self.logger.error("❌ 登录状态验证失败，无法继续抽取")
+                                # 登录状态丢失且无法恢复，重新开始抽取流程
+                                raise ContentExtractionError("登录状态丢失，需要重新开始抽取流程")
                         
                         # 导航到下一页
                         if not self.page_parser.navigate_to_next_page(driver):

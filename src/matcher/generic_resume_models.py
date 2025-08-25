@@ -420,11 +420,18 @@ def create_default_skill_weights() -> DynamicSkillWeights:
     """创建默认技能权重配置"""
     weights = DynamicSkillWeights()
     
-    # 添加一些常见技能的默认权重
+    # 扩展的技能权重配置 - 重点提升占彬的核心技能权重
     default_skills = {
-        'python': 1.6,
+        # 编程语言
+        'python': 1.8,  # 占彬的核心技能，提升权重
         'java': 1.5,
         'javascript': 1.4,
+        'typescript': 1.4,
+        'c#': 1.6,  # 占彬有经验
+        'go': 1.5,
+        'golang': 1.5,
+        
+        # Web技术
         'react': 1.3,
         'vue': 1.3,
         'angular': 1.3,
@@ -432,33 +439,140 @@ def create_default_skill_weights() -> DynamicSkillWeights:
         'spring': 1.3,
         'django': 1.3,
         'flask': 1.2,
-        'mysql': 1.3,
-        'postgresql': 1.3,
+        
+        # 数据库技术
+        'mysql': 1.4,
+        'postgresql': 1.4,
         'mongodb': 1.2,
-        'redis': 1.2,
-        'docker': 1.4,
-        'kubernetes': 1.5,
+        'redis': 1.3,
+        'azure sql': 1.6,  # 占彬的Azure专长
+        'cosmos db': 1.6,  # 占彬的Azure专长
+        'sql server': 1.5,
+        
+        # 云平台技术 (占彬的专长领域)
+        'azure': 1.9,  # 占彬是Azure专家，最高权重
+        'microsoft azure': 1.9,
+        'azure data factory': 2.0,  # 占彬的核心技能
+        'azure functions': 1.8,
+        'azure storage': 1.7,
+        'azure data lake storage': 1.9,
+        'azure data lake storage gen2': 1.9,
+        'azure databricks': 2.0,  # 占彬的核心技能
+        'azure synapse': 1.8,
+        'azure devops': 1.7,
+        'azure app service': 1.6,
         'aws': 1.5,
-        'azure': 1.5,
         'gcp': 1.4,
-        'machine learning': 1.7,
-        'deep learning': 1.6,
-        'ai': 1.8,
-        'data science': 1.6,
-        'big data': 1.5,
-        'spark': 1.4,
-        'hadoop': 1.3,
-        'tensorflow': 1.6,
-        'pytorch': 1.6,
-        'scikit-learn': 1.4,
-        'pandas': 1.3,
-        'numpy': 1.3,
-        'git': 1.2,
-        'linux': 1.3,
-        'agile': 1.2,
-        'scrum': 1.2,
-        'devops': 1.4,
-        'ci/cd': 1.3
+        'google cloud': 1.4,
+        
+        # 大数据和数据工程 (占彬的核心领域)
+        'databricks': 2.0,  # 占彬的最核心技能
+        'delta lake': 1.9,  # 占彬的核心技能
+        'spark': 1.8,
+        'pyspark': 1.9,  # 占彬的核心技能
+        'spark sql': 1.8,
+        'hadoop': 1.5,
+        'hdfs': 1.5,
+        'hive': 1.5,
+        'kafka': 1.6,
+        'ssis': 1.8,  # 占彬有丰富经验
+        'informatica': 1.8,  # 占彬有丰富经验
+        'etl': 1.8,  # 占彬的核心技能
+        'elt': 1.7,
+        'data pipeline': 1.9,  # 占彬的核心技能
+        'data integration': 1.8,
+        'oltp': 1.7,  # 占彬简历中的技能
+        'olap': 1.7,  # 占彬简历中的技能
+        'data warehouse': 1.8,
+        'data lineage': 1.8,  # 占彬的专长
+        'data governance': 1.9,  # 占彬的专长
+        'data quality': 1.8,  # 占彬的专长
+        'metadata management': 1.8,  # 占彬的专长
+        
+        # AI/ML技能 (占彬的专长)
+        'machine learning': 1.9,  # 占彬的核心技能
+        'deep learning': 1.8,  # 占彬的核心技能
+        'ai': 1.9,
+        'artificial intelligence': 1.9,
+        'computer vision': 1.8,  # 占彬的专长
+        'tensorflow': 1.7,
+        'pytorch': 1.8,  # 占彬的核心技能
+        'yolo': 1.7,  # 占彬简历中的技能
+        'resnet': 1.7,  # 占彬简历中的技能
+        'attention mechanism': 1.7,  # 占彬简历中的技能
+        'opencv': 1.6,
+        'scikit-learn': 1.5,
+        'pandas': 1.6,  # 占彬的核心技能
+        'numpy': 1.6,  # 占彬的核心技能
+        'matplotlib': 1.4,
+        'langchain': 1.8,  # 占彬简历中的技能
+        'llamaindex': 1.8,  # 占彬简历中的技能
+        'openai api': 1.7,
+        'azure openai': 1.8,  # 占彬的Azure专长
+        'rag': 1.9,  # 占彬的核心技能
+        'retrieval augmented generation': 1.9,
+        'prompt engineering': 1.7,  # 占彬简历中的技能
+        
+        # 数据科学
+        'data science': 1.8,  # 占彬的核心领域
+        'data analysis': 1.7,
+        'data visualization': 1.6,
+        'big data': 1.7,
+        
+        # DevOps和基础设施
+        'docker': 1.5,
+        'kubernetes': 1.6,
+        'jenkins': 1.4,
+        'ci/cd': 1.6,  # 占彬有经验
+        'continuous integration': 1.6,
+        'continuous deployment': 1.6,
+        'devops': 1.6,  # 占彬的管理技能
+        'git': 1.3,
+        'linux': 1.4,
+        
+        # 项目管理和方法论 (占彬的管理经验)
+        'agile': 1.7,  # 占彬的核心技能
+        'scrum': 1.8,  # 占彬是Scrum Master
+        'scrum master': 1.9,  # 占彬的职位
+        'project management': 1.8,  # 占彬的管理技能
+        'technical lead': 1.8,  # 占彬的角色
+        'team management': 1.8,  # 占彬的管理技能
+        
+        # 架构技能 (占彬的核心优势)
+        'data architecture': 2.0,  # 占彬的核心职位
+        'solution architecture': 1.9,  # 占彬的经验
+        'system architecture': 1.8,
+        'microservices': 1.6,
+        'api': 1.5,
+        'rest': 1.5,
+        
+        # 制药行业技能 (占彬的行业经验)
+        'pharmaceutical': 1.7,  # 占彬的行业经验
+        'clinical data': 1.6,
+        'regulatory compliance': 1.6,
+        
+        # 中文技能关键词 (占彬简历中的中文技能)
+        '数据工程': 1.9,
+        '数据架构': 2.0,
+        '数据治理': 1.9,
+        '数据质量': 1.8,
+        '数据血缘': 1.8,
+        '元数据管理': 1.8,
+        '机器学习': 1.9,
+        '深度学习': 1.8,
+        '计算机视觉': 1.8,
+        '人工智能': 1.9,
+        '数据科学': 1.8,
+        '大数据': 1.7,
+        '云计算': 1.8,
+        '敏捷开发': 1.7,
+        '项目管理': 1.8,
+        '技术管理': 1.8,
+        '架构设计': 1.9,
+        '湖仓一体': 1.9,  # 占彬的核心架构经验
+        '实时处理': 1.7,
+        '批处理': 1.7,
+        '流处理': 1.7
     }
     
     for skill, weight in default_skills.items():

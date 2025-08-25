@@ -41,13 +41,14 @@ class LoginManager:
         self.login_start_time = None
         self.current_session_file = None
     
-    def start_login_session(self, save_session: bool = True, session_file: Optional[str] = None) -> bool:
+    def start_login_session(self, save_session: bool = True, session_file: Optional[str] = None, test_keyword: str = "test") -> bool:
         """
         启动登录会话
         
         Args:
             save_session: 是否保存会话
             session_file: 会话文件路径
+            test_keyword: 用于会话验证的测试关键词
             
         Returns:
             是否登录成功
@@ -62,13 +63,21 @@ class LoginManager:
             
             # 1. 检查是否可以使用保存的会话
             if self.mode_config.get('use_saved_session', True):
-                if self._try_load_existing_session(session_file):
+                if self._try_load_existing_session(session_file, test_keyword):
                     self.logger.info("✅ 使用保存的会话登录成功")
                     self.is_logged_in = True
+                    
+                    # 初始化登录检测器（即使使用保存的会话也需要）
+                    driver = self.browser_manager.get_driver()
+                    if driver:
+                        self.login_detector = LoginDetector(driver, self.config)
+                    
                     return True
             
-            # 2. 启动浏览器
-            driver = self.browser_manager.create_driver()
+            # 2. 启动浏览器（如果还没有创建）
+            driver = self.browser_manager.get_driver()
+            if not driver:
+                driver = self.browser_manager.create_driver()
             
             # 3. 初始化登录检测器
             self.login_detector = LoginDetector(driver, self.config)
@@ -96,12 +105,13 @@ class LoginManager:
             self.logger.error(f"❌ 登录会话启动失败: {e}")
             raise LoginError(f"登录会话启动失败: {e}")
     
-    def _try_load_existing_session(self, session_file: Optional[str] = None) -> bool:
+    def _try_load_existing_session(self, session_file: Optional[str] = None, test_keyword: str = "test") -> bool:
         """
         尝试加载现有会话
         
         Args:
             session_file: 会话文件路径
+            test_keyword: 用于会话验证的测试关键词
             
         Returns:
             是否加载成功
@@ -115,13 +125,15 @@ class LoginManager:
             
             self.logger.info(f"🔄 尝试加载保存的会话: {session_info['filepath']}")
             
-            # 启动浏览器
-            driver = self.browser_manager.create_driver()
+            # 获取或创建浏览器实例
+            driver = self.browser_manager.get_driver()
+            if not driver:
+                driver = self.browser_manager.create_driver()
             
             # 加载会话
             if self.session_manager.load_session(driver, session_file):
                 # 验证会话是否有效
-                if self.session_manager.is_session_valid(driver):
+                if self.session_manager.is_session_valid(driver, test_keyword):
                     self.current_session_file = session_info['filepath']
                     return True
                 else:
@@ -203,10 +215,13 @@ class LoginManager:
         
         return status_info
     
-    def force_check_login(self) -> bool:
+    def force_check_login(self, test_keyword: str = "test") -> bool:
         """
         强制检查当前是否已登录
         
+        Args:
+            test_keyword: 用于会话验证的测试关键词
+            
         Returns:
             是否已登录
         """
@@ -216,7 +231,7 @@ class LoginManager:
                 return False
             
             # 使用会话管理器检查
-            is_valid = self.session_manager.is_session_valid(driver)
+            is_valid = self.session_manager.is_session_valid(driver, test_keyword)
             self.is_logged_in = is_valid
             
             return is_valid
@@ -324,6 +339,11 @@ class LoginDetector:
         
         while time.time() - start_time < timeout:
             try:
+                # 首先检查WebDriver是否还活跃
+                if not self._is_driver_alive():
+                    self.logger.error("❌ WebDriver连接已断开")
+                    return False
+                
                 if self.is_logged_in():
                     self.logger.info("✅ 登录成功检测到!")
                     return True
@@ -335,6 +355,10 @@ class LoginDetector:
                 
             except Exception as e:
                 self.logger.warning(f"登录检测过程中出现异常: {e}")
+                # 检查是否是连接错误
+                if "connection" in str(e).lower() or "refused" in str(e).lower():
+                    self.logger.error("❌ WebDriver连接错误，停止检测")
+                    return False
                 time.sleep(check_interval)
         
         elapsed_time = time.time() - start_time
@@ -349,11 +373,18 @@ class LoginDetector:
         
         for selector in success_indicators:
             try:
-                element = self.driver.find_element(By.CSS_SELECTOR, selector)
-                if element and element.is_displayed():
-                    self.logger.debug(f"找到登录成功指示器: {selector}")
-                    return True
-            except (NoSuchElementException, Exception):
+                elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                
+                for element in elements:
+                    try:
+                        if element and element.is_displayed():
+                            text = element.text.strip()[:30] if element.text else ""
+                            self.logger.debug(f"找到登录成功指示器: {selector} (文本: '{text}')")
+                            return True
+                    except Exception:
+                        continue
+                        
+            except Exception:
                 continue
         
         return False
@@ -413,6 +444,15 @@ class LoginDetector:
                 continue
         
         return status_info
+    
+    def _is_driver_alive(self) -> bool:
+        """检查WebDriver是否还活跃"""
+        try:
+            # 尝试获取当前URL来检查driver是否活跃
+            _ = self.driver.current_url
+            return True
+        except Exception:
+            return False
     
     def _show_login_instructions(self):
         """显示登录指导信息"""

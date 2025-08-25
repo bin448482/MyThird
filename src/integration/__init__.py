@@ -7,7 +7,7 @@ from .master_controller import MasterController
 from .data_bridge import DataBridge
 from .job_scheduler import JobScheduler
 from .decision_engine import DecisionEngine
-from .auto_submission_engine import AutoSubmissionEngine
+from .submission_integration import SubmissionIntegration
 
 __all__ = [
     'MasterController',

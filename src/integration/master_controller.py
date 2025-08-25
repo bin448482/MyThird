@@ -16,7 +16,7 @@ from ..matcher.generic_resume_matcher import GenericResumeJobMatcher
 from .data_bridge import DataBridge
 from .job_scheduler import JobScheduler
 from .decision_engine import DecisionEngine
-from .auto_submission_engine import AutoSubmissionEngine
+from .submission_integration import SubmissionIntegration
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class MasterController:
         self.resume_matcher = GenericResumeJobMatcher(vector_manager, config)
         
         self.decision_engine = DecisionEngine(config)
-        self.auto_submitter = AutoSubmissionEngine(config)
+        self.submission_integration = SubmissionIntegration(config)
         self.data_bridge = DataBridge(config)
         self.job_scheduler = JobScheduler(config)
         
@@ -106,8 +106,7 @@ class MasterController:
             if not extraction_result['success']:
                 raise PipelineError(f"职位提取失败: {extraction_result.get('error', 'Unknown error')}")
             
-            # 暂时注释掉其他阶段，专注调试第一阶段
-            # 阶段2: RAG处理 - 从数据库读取未处理的职位
+            # 阶段2: RAG处理
             logger.info("开始阶段2: RAG处理")
             self.current_stage = "rag_processing"
             rag_result = await self._execute_rag_processing_from_database()
@@ -123,29 +122,22 @@ class MasterController:
             if not matching_result['success']:
                 raise PipelineError(f"简历匹配失败: {matching_result.get('error', 'Unknown error')}")
             
-            # # 阶段4: 智能决策
-            # logger.info("开始阶段4: 智能决策")
-            # self.current_stage = "intelligent_decision"
-            # decision_result = await self._execute_intelligent_decision(matching_result, pipeline_config.decision_criteria)
+            # 阶段4: 简历投递
+            logger.info("开始阶段4: 简历投递")
+            self.current_stage = "resume_submission"
+            submission_result = self._execute_resume_submission(pipeline_config.submission_config)
             
-            # if not decision_result['success']:
-            #     raise PipelineError(f"智能决策失败: {decision_result.get('error', 'Unknown error')}")
+            if not submission_result['success']:
+                logger.warning(f"简历投递失败: {submission_result.get('error', 'Unknown error')}")
             
-            # # 阶段5: 自动投递
-            # logger.info("开始阶段5: 自动投递")
-            # self.current_stage = "auto_submission"
-            # submission_result = await self._execute_auto_submission(decision_result, pipeline_config.submission_config)
-            
-            # 创建模拟的其他阶段结果用于测试
+            # 创建决策结果用于兼容性
             decision_result = {'success': True, 'recommended_submissions': 0}
-            submission_result = {'success': True, 'successful_submissions': 0}
             
             # 生成执行报告
             end_time = datetime.now()
             execution_time = (end_time - start_time).total_seconds()
             
-            # 使用实际的extraction_result，如果没有则创建空的
-            extraction_result = getattr(self, '_last_extraction_result', {'success': True, 'total_extracted': 0})
+            # 使用实际的结果
             
             report = ExecutionReport(
                 pipeline_id=self.pipeline_id,
@@ -563,8 +555,44 @@ class MasterController:
             self._last_decision_result = result
             return result
     
+    def _execute_resume_submission(self, submission_config: Dict[str, Any] = None) -> Dict[str, Any]:
+        """执行简历投递阶段（同步方法，因为Selenium限制）"""
+        stage_start = time.time()
+        
+        try:
+            logger.info("开始执行简历投递...")
+            
+            # 使用新的投递集成模块（同步调用）
+            submission_result = self.submission_integration.execute_submission_pipeline_sync(
+                config=submission_config or {}
+            )
+            
+            stage_time = time.time() - stage_start
+            self.execution_stats['stage_timings']['resume_submission'] = stage_time
+            
+            result = {
+                'success': submission_result.get('success', False),
+                'total_processed': submission_result.get('total_processed', 0),
+                'successful_submissions': submission_result.get('successful_submissions', 0),
+                'failed_submissions': submission_result.get('failed_submissions', 0),
+                'skipped_submissions': submission_result.get('skipped_submissions', 0),
+                'submission_details': submission_result.get('submission_details', []),
+                'processing_time': stage_time,
+                'error_message': submission_result.get('error_message')
+            }
+            
+            self._last_submission_result = result
+            logger.info(f"简历投递完成: 成功 {result['successful_submissions']}, 失败 {result['failed_submissions']}, 跳过 {result['skipped_submissions']}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"简历投递失败: {e}")
+            result = {'success': False, 'error': str(e)}
+            self._last_submission_result = result
+            return result
+
     async def _execute_auto_submission(self, decision_result: Dict[str, Any], submission_config: Dict[str, Any]) -> Dict[str, Any]:
-        """执行自动投递阶段"""
+        """执行自动投递阶段（保留用于兼容性）"""
         stage_start = time.time()
         
         try:
@@ -728,14 +756,15 @@ class MasterController:
                 return await self._execute_rag_processing_from_database()
             elif stage == 'resume_matching':
                 return await self._execute_resume_matching_with_database_save(pipeline_config.resume_profile)
+            elif stage == 'resume_submission':
+                return self._execute_resume_submission(pipeline_config.submission_config)
             elif stage == 'decision':
                 # 需要先获取匹配结果
                 logger.warning("决策阶段需要匹配结果，建议先运行匹配阶段")
                 return {'success': False, 'error': '需要先运行匹配阶段'}
             elif stage == 'submission':
-                # 需要先获取决策结果
-                logger.warning("投递阶段需要决策结果，建议先运行决策阶段")
-                return {'success': False, 'error': '需要先运行决策阶段'}
+                # 兼容旧的投递阶段名称
+                return self._execute_resume_submission(pipeline_config.submission_config)
             else:
                 return {'success': False, 'error': f'未知阶段: {stage}'}
                 

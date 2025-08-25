@@ -1,254 +1,267 @@
-# RAG系统测试配置文件
-
-# RAG系统配置
-rag_system:
-  # 数据库配置
-  database:
-    path: "./data/jobs.db"
-    batch_size: 50
-  
-  # LLM配置
-  llm:
-    provider: "zhipu"
-    model: "glm-4-flash"
-    api_key: "0175134f27a040709d7541e14b4db353.V3KP9u8rZ0oQj9s9"  # 智谱AI API密钥
-    temperature: 0.1
-    max_tokens: 1500
-    timeout_seconds: 30
-    retry_attempts: 3
-  
-  # 向量数据库配置
-  vector_db:
-    persist_directory: "./data/test_chroma_db"
-    collection_name: "job_positions"
-    embeddings:
-      model_name: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-      device: "cpu"
-      normalize_embeddings: true
-  
-  # 文档创建配置
-  documents:
-    types: ["overview", "responsibility", "requirement", "skills", "basic_requirements"]
-    create_comprehensive_doc: false
-  
-  # 处理配置
-  processing:
-    skip_processed: true
-    force_reprocess: false
-    batch_size: 50
-    max_retry_attempts: 3
-
-# 测试环境配置
-test_environment:
-  # 测试数据库配置
-  database:
-    test_db_path: "./data/jobs.db"
-    backup_db_path: "./test_data/test_jobs_backup.db"
-    create_test_data: true
-    test_records_count: 10
-  
-  # 测试向量数据库配置
-  vector_db:
-    test_persist_directory: "./data/test_chroma_db"
-    cleanup_after_test: true
-    collection_prefix: "test_"
-
-# 功能测试配置
-functional_tests:
-  # 系统初始化测试
-  system_initialization:
-    enabled: true
-    timeout_seconds: 60
-    retry_count: 3
-  
-  # 数据库操作测试
-  database_operations:
-    enabled: true
-    test_batch_sizes: [1, 5, 10, 20]
-    max_test_records: 50
-  
-  # 职位处理测试
-  job_processing:
-    enabled: true
-    test_fallback_mode: true  # 测试备用处理模式
-    test_llm_mode: false      # 是否测试LLM模式（需要有效API密钥）
-  
-  # 向量操作测试
-  vector_operations:
-    enabled: true
-    test_document_types: ["overview", "responsibility", "requirement", "skills"]
-    search_queries: ["Python开发", "Java工程师", "前端开发", "数据分析"]
-    search_k_values: [1, 3, 5, 10]
-  
-  # 简历优化测试
-  resume_optimization:
-    enabled: true
-    test_resume_formats: ["basic", "detailed"]
-    test_optimization_types: ["gap_analysis", "skill_suggestions", "content_optimization"]
-
-# 性能基准测试配置
-performance_tests:
-  # 系统初始化性能
-  initialization_benchmark:
-    enabled: true
-    test_runs: 5
-    acceptable_init_time_seconds: 10
-    acceptable_memory_increase_mb: 100
-  
-  # 批量处理性能
-  batch_processing_benchmark:
-    enabled: true
-    batch_sizes: [1, 5, 10, 20, 50]
-    max_jobs_per_batch: 100
-    acceptable_jobs_per_second: 2
-  
-  # 向量搜索性能
-  vector_search_benchmark:
-    enabled: true
-    search_queries: 10
-    k_values: [1, 3, 5, 10, 20]
-    acceptable_search_time_ms: 500
-  
-  # 并发处理性能
-  concurrent_processing_benchmark:
-    enabled: true
-    concurrency_levels: [1, 2, 4, 8]
-    jobs_per_level: 20
-    acceptable_concurrent_speedup: 1.5
-  
-  # 内存使用基准
-  memory_usage_benchmark:
-    enabled: true
-    job_checkpoints: [10, 20, 50, 100]
-    acceptable_memory_per_job_mb: 5
-
-# 错误场景测试配置
+cleanup:
+  auto_cleanup: true
+  cleanup_items:
+  - test_vector_databases
+  - test_log_files
+  - temporary_test_files
+  preserve_items:
+  - test_reports
+  - test_database_backups
 error_scenario_tests:
-  # 数据库错误测试
-  database_errors:
-    enabled: true
-    test_scenarios:
-      - "file_not_found"
-      - "permission_denied"
-      - "schema_mismatch"
-      - "connection_timeout"
-  
-  # LLM API错误测试
-  llm_api_errors:
-    enabled: true
-    test_scenarios:
-      - "invalid_api_key"
-      - "network_timeout"
-      - "rate_limit_exceeded"
-      - "invalid_response_format"
-  
-  # 向量数据库错误测试
-  vector_db_errors:
-    enabled: true
-    test_scenarios:
-      - "directory_permission_error"
-      - "disk_space_insufficient"
-      - "search_failure"
-      - "embedding_model_error"
-  
-  # 数据验证错误测试
   data_validation_errors:
     enabled: true
     test_scenarios:
-      - "empty_data"
-      - "malicious_data"
-      - "encoding_errors"
-      - "oversized_data"
-  
-  # 资源耗尽测试
+    - empty_data
+    - malicious_data
+    - encoding_errors
+    - oversized_data
+  database_errors:
+    enabled: true
+    test_scenarios:
+    - file_not_found
+    - permission_denied
+    - schema_mismatch
+    - connection_timeout
+  llm_api_errors:
+    enabled: true
+    test_scenarios:
+    - invalid_api_key
+    - network_timeout
+    - rate_limit_exceeded
+    - invalid_response_format
   resource_exhaustion_tests:
     enabled: true
     test_scenarios:
-      - "memory_exhaustion"
-      - "file_handle_exhaustion"
-      - "cpu_overload"
-
-# 测试报告配置
-test_reporting:
-  # 报告输出目录
-  output_directory: "./test_reports"
-  
-  # 报告格式
-  formats:
-    - "json"
-    - "html"  # 如果需要HTML报告
-  
-  # 报告详细程度
-  detail_level: "full"  # full, summary, minimal
-  
-  # 是否包含性能图表
-  include_performance_charts: true
-  
-  # 是否发送测试结果通知
-  notifications:
-    enabled: false
-    email_recipients: []
-    webhook_url: ""
-
-# 测试数据配置
+    - memory_exhaustion
+    - file_handle_exhaustion
+    - cpu_overload
+  vector_db_errors:
+    enabled: true
+    test_scenarios:
+    - directory_permission_error
+    - disk_space_insufficient
+    - search_failure
+    - embedding_model_error
+functional_tests:
+  database_operations:
+    enabled: true
+    max_test_records: 50
+    test_batch_sizes:
+    - 1
+    - 5
+    - 10
+    - 20
+  job_processing:
+    enabled: true
+    test_fallback_mode: true
+    test_llm_mode: false
+  resume_optimization:
+    enabled: true
+    test_optimization_types:
+    - gap_analysis
+    - skill_suggestions
+    - content_optimization
+    test_resume_formats:
+    - basic
+    - detailed
+  system_initialization:
+    enabled: true
+    retry_count: 3
+    timeout_seconds: 60
+  vector_operations:
+    enabled: true
+    search_k_values:
+    - 1
+    - 3
+    - 5
+    - 10
+    search_queries:
+    - Python开发
+    - Java工程师
+    - 前端开发
+    - 数据分析
+    test_document_types:
+    - overview
+    - responsibility
+    - requirement
+    - skills
+login:
+  check_interval: 2
+  failure_indicators:
+  - .error-msg
+  - .login-failed
+  - .captcha-error
+  - .password-error
+  - .alert-danger
+  login_url: https://login.51job.com/
+  session_timeout: 7200
+  success_indicators:
+  - .user-info
+  - .user-name
+  - '[data-user]'
+  - .logout
+  - .member-center
+  - .welcome-user
+  wait_timeout: 300
+login_mode:
+  auto_save_session: true
+  detail_page_delay: 3.0
+  enabled: true
+  login_retry_delay: 10
+  max_login_attempts: 3
+  require_login_for_details: true
+  session_validation_interval: 300
+  website: qiancheng
+mode:
+  close_on_complete: true
+  debug: false
+  development: false
+  login_mode_enabled: true
+  session_file: data/qiancheng_session.json
+  skip_login: false
+  use_saved_session: true
+performance_tests:
+  batch_processing_benchmark:
+    acceptable_jobs_per_second: 2
+    batch_sizes:
+    - 1
+    - 5
+    - 10
+    - 20
+    - 50
+    enabled: true
+    max_jobs_per_batch: 100
+  concurrent_processing_benchmark:
+    acceptable_concurrent_speedup: 1.5
+    concurrency_levels:
+    - 1
+    - 2
+    - 4
+    - 8
+    enabled: true
+    jobs_per_level: 20
+  initialization_benchmark:
+    acceptable_init_time_seconds: 10
+    acceptable_memory_increase_mb: 100
+    enabled: true
+    test_runs: 5
+  memory_usage_benchmark:
+    acceptable_memory_per_job_mb: 5
+    enabled: true
+    job_checkpoints:
+    - 10
+    - 20
+    - 50
+    - 100
+  vector_search_benchmark:
+    acceptable_search_time_ms: 500
+    enabled: true
+    k_values:
+    - 1
+    - 3
+    - 5
+    - 10
+    - 20
+    search_queries: 10
+rag_system:
+  database:
+    batch_size: 50
+    path: ./data/jobs.db
+  documents:
+    create_comprehensive_doc: false
+    types:
+    - overview
+    - responsibility
+    - requirement
+    - skills
+    - basic_requirements
+  llm:
+    api_key: 0175134f27a040709d7541e14b4db353.V3KP9u8rZ0oQj9s9
+    max_tokens: 1500
+    model: glm-4-flash
+    provider: zhipu
+    retry_attempts: 3
+    temperature: 0.1
+    timeout_seconds: 30
+  processing:
+    batch_size: 50
+    force_reprocess: false
+    max_retry_attempts: 3
+    skip_processed: true
+  vector_db:
+    collection_name: job_positions
+    embeddings:
+      device: cpu
+      model_name: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      normalize_embeddings: true
+    persist_directory: ./data/test_chroma_db
 test_data:
-  # 测试职位数据
   sample_jobs:
-    - job_id: 1
-      title: "Python后端开发工程师"
-      company: "科技公司A"
-      location: "北京"
-      description: "负责Python后端开发，熟悉Django/Flask框架，有数据库设计经验"
-      education: "本科及以上"
-      experience: "3-5年"
-      salary: "20-30K"
-    
-    - job_id: 2
-      title: "Java高级开发工程师"
-      company: "互联网公司B"
-      location: "上海"
-      description: "负责Java微服务开发，熟悉Spring Boot，有分布式系统经验"
-      education: "本科及以上"
-      experience: "5-8年"
-      salary: "30-50K"
-    
-    - job_id: 3
-      title: "前端开发工程师"
-      company: "创业公司C"
-      location: "深圳"
-      description: "负责React/Vue前端开发，熟悉现代前端工程化工具"
-      education: "专科及以上"
-      experience: "2-4年"
-      salary: "15-25K"
-  
-  # 测试简历数据
+  - company: 科技公司A
+    description: 负责Python后端开发，熟悉Django/Flask框架，有数据库设计经验
+    education: 本科及以上
+    experience: 3-5年
+    job_id: 1
+    location: 北京
+    salary: 20-30K
+    title: Python后端开发工程师
+  - company: 互联网公司B
+    description: 负责Java微服务开发，熟悉Spring Boot，有分布式系统经验
+    education: 本科及以上
+    experience: 5-8年
+    job_id: 2
+    location: 上海
+    salary: 30-50K
+    title: Java高级开发工程师
+  - company: 创业公司C
+    description: 负责React/Vue前端开发，熟悉现代前端工程化工具
+    education: 专科及以上
+    experience: 2-4年
+    job_id: 3
+    location: 深圳
+    salary: 15-25K
+    title: 前端开发工程师
   sample_resumes:
-    - name: "张三"
-      current_position: "Python开发工程师"
-      years_of_experience: 3
-      education: "本科 - 计算机科学"
-      skills: ["Python", "Django", "MySQL", "Redis", "Docker"]
-      summary: "3年Python开发经验，熟悉Web开发和数据库设计"
-    
-    - name: "李四"
-      current_position: "Java开发工程师"
-      years_of_experience: 5
-      education: "硕士 - 软件工程"
-      skills: ["Java", "Spring Boot", "MySQL", "Redis", "Kafka"]
-      summary: "5年Java开发经验，有微服务架构和分布式系统经验"
-
-# 测试环境清理配置
-cleanup:
-  # 测试完成后是否自动清理
-  auto_cleanup: true
-  
-  # 清理项目
-  cleanup_items:
-    - "test_vector_databases"
-    - "test_log_files"
-    - "temporary_test_files"
-  
-  # 保留项目
-  preserve_items:
-    - "test_reports"
-    - "test_database_backups"
+  - current_position: Python开发工程师
+    education: 本科 - 计算机科学
+    name: 张三
+    skills:
+    - Python
+    - Django
+    - MySQL
+    - Redis
+    - Docker
+    summary: 3年Python开发经验，熟悉Web开发和数据库设计
+    years_of_experience: 3
+  - current_position: Java开发工程师
+    education: 硕士 - 软件工程
+    name: 李四
+    skills:
+    - Java
+    - Spring Boot
+    - MySQL
+    - Redis
+    - Kafka
+    summary: 5年Java开发经验，有微服务架构和分布式系统经验
+    years_of_experience: 5
+test_environment:
+  database:
+    backup_db_path: ./test_data/test_jobs_backup.db
+    create_test_data: true
+    test_db_path: ./data/jobs.db
+    test_records_count: 10
+  vector_db:
+    cleanup_after_test: true
+    collection_prefix: test_
+    test_persist_directory: ./data/test_chroma_db
+test_reporting:
+  detail_level: full
+  formats:
+  - json
+  - html
+  include_performance_charts: true
+  notifications:
+    email_recipients: []
+    enabled: false
+    webhook_url: ''
+  output_directory: ./test_reports

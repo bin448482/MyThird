@@ -277,6 +277,15 @@ class BehaviorSimulator:
             是否导航成功
         """
         try:
+            # 验证URL格式
+            if not url or not isinstance(url, str):
+                self.logger.error(f"无效的URL: {url}")
+                return False
+            
+            if not url.startswith(('http://', 'https://')):
+                self.logger.error(f"URL格式错误: {url}")
+                return False
+            
             if from_link:
                 # 优化：减少等待时间
                 self.random_delay(0.2, 0.8)
@@ -284,20 +293,82 @@ class BehaviorSimulator:
                 # 优化：减少直接导航延迟
                 self.random_delay(0.5, 1.0)
             
+            # 记录当前URL以便回滚
+            current_url = None
+            try:
+                current_url = self.driver.current_url
+            except:
+                pass
+            
             # 导航到URL
             self.driver.get(url)
             
             # 等待页面加载并模拟用户行为
             if self.wait_for_page_load():
-                # 优化：减少页面探索概率和时间
-                if random.random() < 0.3:  # 从60%减少到30%
-                    self.simulate_page_exploration(random.uniform(1.0, 2.0))  # 从2-5秒减少到1-2秒
-                return True
+                # 验证导航是否成功
+                try:
+                    new_url = self.driver.current_url
+                    # 检查是否被重定向到错误页面
+                    if self._is_error_page(new_url):
+                        self.logger.warning(f"导航到错误页面: {new_url}")
+                        return False
+                    
+                    # 优化：减少页面探索概率和时间
+                    if random.random() < 0.3:  # 从60%减少到30%
+                        self.simulate_page_exploration(random.uniform(1.0, 2.0))  # 从2-5秒减少到1-2秒
+                    return True
+                except Exception as e:
+                    self.logger.warning(f"导航后验证失败: {e}")
+                    return False
             
             return False
             
         except Exception as e:
             self.logger.error(f"自然导航失败: {e}")
+            # 尝试恢复到之前的页面
+            if current_url:
+                try:
+                    self.driver.get(current_url)
+                except:
+                    pass
+            return False
+    
+    def _is_error_page(self, url: str) -> bool:
+        """
+        检查是否为错误页面
+        
+        Args:
+            url: 页面URL
+            
+        Returns:
+            是否为错误页面
+        """
+        try:
+            # 检查URL中的错误指示器
+            error_indicators = ['404', 'error', 'notfound', 'expired']
+            url_lower = url.lower()
+            
+            if any(indicator in url_lower for indicator in error_indicators):
+                return True
+            
+            # 检查页面标题和内容
+            try:
+                title = self.driver.title.lower()
+                if any(indicator in title for indicator in ['404', 'error', '页面不存在', '找不到']):
+                    return True
+                
+                # 检查页面源码中的错误指示器
+                page_source = self.driver.page_source.lower()
+                error_texts = ['404', 'page not found', '页面不存在', '职位已下线', '招聘已结束']
+                if any(text in page_source for text in error_texts):
+                    return True
+                    
+            except:
+                pass
+            
+            return False
+            
+        except Exception:
             return False
     
     def get_random_viewport_position(self) -> Tuple[int, int]:

@@ -38,14 +38,8 @@ class GenericResumeJobMatcher:
         self.min_score_threshold = config.get('min_score_threshold', 0.3)
         self.max_results = config.get('max_results', 20)
         
-        # 动态权重配置
-        self.matching_weights = config.get('weights', {
-            'semantic_similarity': 0.35,
-            'skills_match': 0.30,
-            'experience_match': 0.20,
-            'industry_match': 0.10,
-            'salary_match': 0.05
-        })
+        # 动态权重配置 - 从配置文件读取
+        self.matching_weights = self._load_matching_weights(config)
         
         # 初始化技能权重系统
         self.skill_weights = create_default_skill_weights()
@@ -59,7 +53,57 @@ class GenericResumeJobMatcher:
             'cache_hits': 0
         }
     
-    async def find_matching_jobs(self, 
+    def _load_matching_weights(self, config: Dict) -> Dict[str, float]:
+        """从配置文件加载匹配权重"""
+        # 默认权重
+        default_weights = {
+            'semantic_similarity': 0.35,
+            'skills_match': 0.30,
+            'experience_match': 0.20,
+            'industry_match': 0.10,
+            'salary_match': 0.05
+        }
+        
+        # 尝试从配置文件读取
+        if config and 'modules' in config and 'resume_matching' in config['modules']:
+            resume_matching_config = config['modules']['resume_matching']
+            
+            if 'algorithms' in resume_matching_config:
+                algorithms = resume_matching_config['algorithms']
+                
+                # 解析算法权重配置
+                for algo in algorithms:
+                    if algo.get('enabled', False):
+                        algo_name = algo.get('name', '')
+                        weight = algo.get('weight', 0.0)
+                        
+                        # 映射配置文件中的算法名称到内部权重键
+                        if algo_name == 'semantic_matching':
+                            default_weights['semantic_similarity'] = weight
+                        elif algo_name == 'skill_matching':
+                            default_weights['skills_match'] = weight
+                        elif algo_name == 'keyword_matching':
+                            # keyword_matching 可以映射到 semantic_similarity 或单独处理
+                            # 这里我们将其合并到 semantic_similarity 中
+                            default_weights['semantic_similarity'] += weight * 0.5
+                            default_weights['skills_match'] += weight * 0.5
+                
+                self.logger.info(f"从配置文件加载匹配权重: {default_weights}")
+        
+        # 也支持直接的 weights 配置（向后兼容）
+        if config and 'weights' in config:
+            default_weights.update(config['weights'])
+        
+        # 确保权重总和为1.0
+        total_weight = sum(default_weights.values())
+        if total_weight > 0:
+            normalized_weights = {k: v/total_weight for k, v in default_weights.items()}
+            self.logger.info(f"标准化后的匹配权重: {normalized_weights}")
+            return normalized_weights
+        
+        return default_weights
+    
+    async def find_matching_jobs(self,
                                 resume_profile: GenericResumeProfile,
                                 filters: Dict[str, Any] = None,
                                 top_k: int = 20) -> ResumeMatchingResult:
@@ -494,15 +538,79 @@ class GenericResumeJobMatcher:
         # 从文档内容中提取技能（简化版本）
         job_text = " ".join([doc.page_content for doc in job_docs]).lower()
         
-        # 常见技能关键词
+        # 扩展的技能关键词 - 包含占彬简历的核心技能
         common_skills = [
-            'python', 'java', 'javascript', 'react', 'vue', 'angular', 'node.js',
-            'spring', 'django', 'flask', 'mysql', 'postgresql', 'mongodb', 'redis',
-            'docker', 'kubernetes', 'aws', 'azure', 'gcp', 'machine learning',
-            'deep learning', 'ai', 'data science', 'big data', 'spark', 'hadoop',
-            'tensorflow', 'pytorch', 'git', 'linux', 'agile', 'scrum', 'devops',
-            'c#', 'c++', 'golang', 'typescript', 'html', 'css', 'bootstrap',
-            'jquery', 'webpack', 'npm', 'yarn', 'sass', 'less'
+            # 编程语言
+            'python', 'java', 'javascript', 'typescript', 'c#', 'c++', 'golang', 'go',
+            
+            # Web前端技术
+            'react', 'vue', 'angular', 'node.js', 'html', 'css', 'bootstrap',
+            'jquery', 'webpack', 'npm', 'yarn', 'sass', 'less',
+            
+            # 后端框架
+            'spring', 'django', 'flask', '.net', 'asp.net',
+            
+            # 数据库技术
+            'mysql', 'postgresql', 'mongodb', 'redis', 'azure sql', 'cosmos db',
+            'sql server', 'oracle', 'sqlite', 'cassandra', 'elasticsearch',
+            
+            # 云平台技术 (重点扩展Azure)
+            'azure', 'microsoft azure', 'aws', 'gcp', 'google cloud',
+            'azure data factory', 'azure functions', 'azure storage',
+            'azure data lake storage', 'azure data lake storage gen2',
+            'azure synapse', 'azure databricks', 'azure devops',
+            'azure app service', 'azure kubernetes service', 'aks',
+            
+            # 大数据和数据工程技能 (占彬的核心领域)
+            'databricks', 'delta lake', 'spark', 'pyspark', 'spark sql',
+            'hadoop', 'hdfs', 'hive', 'kafka', 'airflow', 'nifi',
+            'ssis', 'informatica', 'talend', 'pentaho',
+            'etl', 'elt', 'data pipeline', 'data integration',
+            'oltp', 'olap', 'data warehouse', 'data mart',
+            'data lineage', 'data governance', 'data quality',
+            'metadata management', 'data catalog',
+            
+            # AI/ML技能 (占彬的专长)
+            'machine learning', 'deep learning', 'ai', 'artificial intelligence',
+            'tensorflow', 'pytorch', 'scikit-learn', 'keras', 'xgboost',
+            'computer vision', 'opencv', 'yolo', 'resnet', 'cnn', 'rnn', 'lstm',
+            'attention mechanism', 'transformer', 'bert', 'gpt',
+            'numpy', 'pandas', 'matplotlib', 'seaborn', 'plotly',
+            'jupyter', 'anaconda', 'mlflow', 'kubeflow',
+            'langchain', 'llamaindex', 'openai api', 'azure openai',
+            'rag', 'retrieval augmented generation', 'prompt engineering',
+            
+            # 数据科学和分析
+            'data science', 'data analysis', 'data visualization',
+            'tableau', 'power bi', 'qlik', 'looker', 'grafana',
+            'r', 'stata', 'spss', 'sas',
+            
+            # DevOps和基础设施
+            'docker', 'kubernetes', 'jenkins', 'gitlab ci', 'github actions',
+            'terraform', 'ansible', 'chef', 'puppet',
+            'linux', 'ubuntu', 'centos', 'windows server',
+            'nginx', 'apache', 'iis',
+            
+            # 项目管理和方法论
+            'agile', 'scrum', 'kanban', 'waterfall', 'devops',
+            'ci/cd', 'continuous integration', 'continuous deployment',
+            'git', 'github', 'gitlab', 'bitbucket', 'svn',
+            
+            # 架构和设计模式
+            'microservices', 'api', 'rest', 'graphql', 'soap',
+            'event driven', 'message queue', 'rabbitmq', 'activemq',
+            'design patterns', 'solid principles', 'clean architecture',
+            
+            # 制药和医疗行业特定技能
+            'pharmaceutical', 'clinical data', 'regulatory compliance',
+            'gxp', 'fda', 'ich', 'clinical trials', 'pharmacovigilance',
+            
+            # 中文技能关键词 (占彬简历中的中文技能)
+            '数据工程', '数据架构', '数据治理', '数据质量', '数据血缘',
+            '元数据管理', '机器学习', '深度学习', '计算机视觉',
+            '人工智能', '数据科学', '大数据', '云计算',
+            '敏捷开发', '项目管理', '技术管理', '架构设计',
+            '湖仓一体', '实时处理', '批处理', '流处理'
         ]
         
         # 只添加在职位文本中找到的技能关键词
@@ -519,31 +627,193 @@ class GenericResumeJobMatcher:
         return unique_skills
     
     def _is_skill_matched(self, job_skill: str, resume_skills: List[str]) -> bool:
-        """判断技能是否匹配"""
-        job_skill_lower = job_skill.lower()
+        """判断技能是否匹配 - 增强版本支持中英文映射和智能匹配"""
+        job_skill_lower = job_skill.lower().strip()
         
+        # 1. 精确匹配
         if job_skill_lower in resume_skills:
             return True
         
-        # 部分匹配
+        # 2. 中英文技能映射
+        skill_mappings = self._get_skill_mappings()
+        
+        # 检查job_skill是否有对应的中文或英文映射
+        for cn_skill, en_skills in skill_mappings.items():
+            if job_skill_lower in [s.lower() for s in en_skills]:
+                # job_skill是英文，检查简历中是否有对应中文
+                if cn_skill in [s.lower() for s in resume_skills]:
+                    return True
+            elif job_skill_lower == cn_skill.lower():
+                # job_skill是中文，检查简历中是否有对应英文
+                for en_skill in en_skills:
+                    if en_skill.lower() in resume_skills:
+                        return True
+        
+        # 3. 技能变体匹配
+        skill_variants = self._get_skill_variants()
+        for base_skill, variants in skill_variants.items():
+            if job_skill_lower == base_skill.lower() or job_skill_lower in [v.lower() for v in variants]:
+                # 检查简历中是否有任何变体
+                all_variants = [base_skill] + variants
+                for variant in all_variants:
+                    if variant.lower() in resume_skills:
+                        return True
+        
+        # 4. 部分匹配 (更智能的匹配)
         for resume_skill in resume_skills:
-            if job_skill_lower in resume_skill or resume_skill in job_skill_lower:
+            # 避免过短的匹配
+            if len(job_skill_lower) >= 3 and len(resume_skill) >= 3:
+                if job_skill_lower in resume_skill or resume_skill in job_skill_lower:
+                    return True
+                
+                # 检查是否是复合技能的一部分
+                if self._is_compound_skill_match(job_skill_lower, resume_skill):
+                    return True
+        
+        return False
+    
+    def _get_skill_mappings(self) -> Dict[str, List[str]]:
+        """获取中英文技能映射"""
+        return {
+            # 占彬简历中的核心技能映射
+            '数据工程师': ['data engineer', 'data engineering', 'data architect', 'data architecture'],
+            'ai/ml架构师': ['ai architect', 'ml architect', 'ai/ml architect', 'machine learning architect', 'ai', 'artificial intelligence'],
+            '技术管理者': ['technical lead', 'tech lead', 'technical manager', 'engineering manager'],
+            '数据平台架构师': ['data platform architect', 'data architect', 'platform architect', 'data architecture'],
+            '端到端ai系统开发': ['end-to-end ai development', 'ai system development', 'ai pipeline', 'ai'],
+            '企业分布式系统开发': ['distributed systems', 'enterprise systems', 'distributed computing'],
+            'web互联网架构构建': ['web architecture', 'internet architecture', 'web system design'],
+            '技术领导': ['technical leadership', 'tech leadership', 'engineering leadership'],
+            '敏捷实践': ['agile practices', 'agile methodology', 'agile development', 'agile'],
+            '企业级系统架构设计': ['enterprise architecture', 'system architecture', 'solution architecture', 'data architecture'],
+            '项目风险管理': ['project risk management', 'risk management', 'project management'],
+            '技术债务控制': ['technical debt management', 'code quality', 'technical debt'],
+            
+            # 数据工程技能
+            '数据血缘追踪': ['data lineage', 'data lineage tracking', 'lineage management'],
+            '元数据管理': ['metadata management', 'data catalog', 'metadata governance'],
+            '数据治理': ['data governance', 'data management', 'data stewardship'],
+            '数据质量校验': ['data quality', 'data validation', 'data quality assurance'],
+            'ssis': ['ssis', 'sql server integration services', 'etl', 'data integration'],
+            'informatica': ['informatica', 'etl', 'data integration'],
+            'databricks': ['databricks', 'delta lake', 'lakehouse'],
+            
+            # AI/ML技能
+            '机器学习': ['machine learning', 'ml', 'ai'],
+            '深度学习': ['deep learning', 'dl', 'ai'],
+            '计算机视觉': ['computer vision', 'cv'],
+            '人体关键点检测': ['human pose estimation', 'keypoint detection', 'pose detection'],
+            '注意力机制': ['attention mechanism', 'attention', 'self-attention'],
+            '推理加速': ['inference acceleration', 'model optimization', 'inference optimization'],
+            '内存优化': ['memory optimization', 'memory management'],
+            '批量预测': ['batch prediction', 'batch inference'],
+            '模型部署': ['model deployment', 'model serving', 'ml deployment'],
+            'rag架构': ['rag', 'retrieval augmented generation', 'rag architecture'],
+            '提示工程': ['prompt engineering', 'prompt design', 'prompt optimization'],
+            
+            # 管理技能
+            '技术团队管理': ['technical team management', 'engineering team lead', 'team leadership'],
+            '敏捷开发实践者': ['agile practitioner', 'agile coach', 'scrum practitioner', 'agile'],
+            '架构设计': ['architecture design', 'system design', 'solution design', 'data architecture'],
+            '风险控制': ['risk management', 'risk control', 'risk mitigation'],
+            '自动化部署': ['automated deployment', 'deployment automation', 'ci/cd'],
+            '版本管理': ['version control', 'source control', 'git management'],
+            '团队建设': ['team building', 'team development', 'team management'],
+            '项目管理': ['project management', 'program management'],
+            'scrum方法论': ['scrum', 'agile', 'scrum master'],
+            
+            # 云平台和数据平台
+            '湖仓一体': ['lakehouse', 'data lakehouse', 'lakehouse architecture', 'delta lake'],
+            '实时处理': ['real-time processing', 'stream processing', 'real-time analytics'],
+            '批处理': ['batch processing', 'batch analytics'],
+            '流处理': ['stream processing', 'streaming', 'real-time streaming'],
+            
+            # 制药行业经验
+            'zoetis': ['pharmaceutical', 'pharma', 'healthcare'],
+            'pwc': ['consulting', 'pharmaceutical']
+        }
+    
+    def _get_skill_variants(self) -> Dict[str, List[str]]:
+        """获取技能变体映射"""
+        return {
+            'azure': ['microsoft azure', 'azure cloud', 'azure platform'],
+            'databricks': ['databricks platform', 'databricks workspace', 'databricks runtime'],
+            'azure data factory': ['adf', 'data factory', 'azure adf'],
+            'azure functions': ['azure function', 'function app', 'serverless functions'],
+            'machine learning': ['ml', 'ai/ml', 'artificial intelligence'],
+            'deep learning': ['dl', 'neural networks', 'deep neural networks'],
+            'computer vision': ['cv', 'image processing', 'visual recognition'],
+            'data engineering': ['data engineer', 'big data engineering'],
+            'data architecture': ['data architect', 'data platform architecture'],
+            'etl': ['extract transform load', 'data integration', 'data pipeline'],
+            'oltp': ['online transaction processing', 'transactional database'],
+            'olap': ['online analytical processing', 'analytical database'],
+            'ci/cd': ['continuous integration', 'continuous deployment', 'devops pipeline'],
+            'scrum master': ['scrum', 'agile coach', 'agile facilitator'],
+            'pytorch': ['torch', 'pytorch framework'],
+            'tensorflow': ['tf', 'tensorflow framework'],
+            'kubernetes': ['k8s', 'container orchestration'],
+            'docker': ['containerization', 'container technology'],
+            'rest api': ['rest', 'restful api', 'web api'],
+            'microservices': ['micro services', 'service oriented architecture', 'soa']
+        }
+    
+    def _is_compound_skill_match(self, job_skill: str, resume_skill: str) -> bool:
+        """检查复合技能匹配"""
+        # 处理复合技能，如 "azure data factory" 匹配 "data factory"
+        job_words = set(job_skill.split())
+        resume_words = set(resume_skill.split())
+        
+        # 如果有足够的词汇重叠，认为匹配
+        if len(job_words) > 1 and len(resume_words) > 1:
+            overlap = job_words.intersection(resume_words)
+            # 至少有2个词匹配，且匹配率超过50%
+            if len(overlap) >= 2 and len(overlap) / min(len(job_words), len(resume_words)) >= 0.5:
                 return True
         
         return False
     
     def _calculate_skill_bonus(self, resume_skills: List[str], job_skills: List[str]) -> float:
-        """计算技能加分"""
+        """计算技能加分 - 扩展占彬的高价值技能"""
         bonus = 0.0
         
-        # 高价值技能加分
-        high_value_skills = ['ai', 'machine learning', 'deep learning', 'kubernetes', 'aws', 'azure']
+        # 扩展的高价值技能加分 - 重点包含占彬的核心技能
+        high_value_skills = [
+            # AI/ML核心技能
+            'ai', 'machine learning', 'deep learning', 'computer vision',
+            'pytorch', 'tensorflow', 'rag', 'langchain', 'llamaindex',
+            'prompt engineering', 'attention mechanism',
+            
+            # 数据工程和架构 (占彬的核心优势)
+            'databricks', 'delta lake', 'data architecture', 'data governance',
+            'data lineage', 'metadata management', 'lakehouse',
+            'azure data factory', 'pyspark', 'etl', 'data pipeline',
+            
+            # 云平台技能
+            'azure', 'aws', 'kubernetes', 'azure databricks',
+            'azure functions', 'azure synapse', 'azure data lake storage',
+            
+            # 架构和管理技能
+            'solution architecture', 'enterprise architecture', 'scrum master',
+            'technical leadership', 'data platform architect',
+            
+            # 中文高价值技能
+            '数据架构', '数据治理', '湖仓一体', 'ai/ml架构师',
+            '数据平台架构师', '技术管理者', '数据工程师'
+        ]
         
         for skill in resume_skills:
-            if skill in high_value_skills and skill not in job_skills:
-                bonus += 0.05
+            skill_lower = skill.lower()
+            if skill_lower in high_value_skills and skill_lower not in job_skills:
+                # 根据技能重要性给不同加分
+                if skill_lower in ['databricks', 'data architecture', '数据架构', 'azure data factory']:
+                    bonus += 0.08  # 占彬的最核心技能，更高加分
+                elif skill_lower in ['ai', 'machine learning', 'azure', 'rag']:
+                    bonus += 0.06  # 重要技能
+                else:
+                    bonus += 0.04  # 一般高价值技能
         
-        return min(0.2, bonus)
+        return min(0.25, bonus)  # 提高最大加分到25%
     
     def _extract_required_experience(self, job_metadata: Dict[str, Any]) -> Optional[int]:
         """提取职位经验要求"""

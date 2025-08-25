@@ -80,7 +80,7 @@ class BrowserManager:
         chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--disable-plugins')
-        chrome_options.add_argument('--disable-images')  # 禁用图片加载，提高速度
+        # chrome_options.add_argument('--disable-images')  # 注释掉：登录需要显示二维码图片
         chrome_options.add_argument('--disable-javascript')  # 可选：禁用JS（如果页面不依赖JS）
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--disable-software-rasterizer')
@@ -98,14 +98,14 @@ class BrowserManager:
         prefs = {
             "profile.default_content_setting_values": {
                 "notifications": 2,  # 禁用通知
-                "images": 2,  # 禁用图片
+                # "images": 2,  # 注释掉：登录需要显示二维码图片
                 "plugins": 2,  # 禁用插件
                 "popups": 2,  # 禁用弹窗
                 "geolocation": 2,  # 禁用地理位置
                 "media_stream": 2,  # 禁用媒体流
             },
             "profile.managed_default_content_settings": {
-                "images": 2
+                # "images": 2  # 注释掉：登录需要显示二维码图片
             }
         }
         chrome_options.add_experimental_option("prefs", prefs)
