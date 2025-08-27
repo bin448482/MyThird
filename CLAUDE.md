@@ -918,18 +918,22 @@ graph TB
     B --> C[登录状态检测]
     C --> D[浏览器会话管理]
     D --> E[页面导航模块]
-    E --> F[按钮识别引擎]
-    F --> G[投递执行器]
-    G --> H[状态更新模块]
-    H --> I[结果统计报告]
+    E --> F[职位状态检测器]
+    F --> G[按钮识别引擎]
+    G --> H[投递执行器]
+    H --> I[状态更新模块]
+    I --> J[结果统计报告]
     
-    J[反爬虫系统] --> D
-    J --> E
-    J --> G
-    
-    K[错误处理器] --> C
+    K[反爬虫系统] --> D
     K --> E
-    K --> G
+    K --> H
+    
+    L[错误处理器] --> C
+    L --> E
+    L --> H
+    
+    M[会话保活系统] --> D
+    M --> E
 ```
 
 ### 核心组件设计
@@ -944,10 +948,33 @@ class ResumeSubmissionEngine:
         """执行批量投递"""
         
     async def submit_single_job(self, job_match: Dict) -> SubmissionResult:
-        """投递单个职位"""
+        """投递单个职位 - 集成状态检测"""
         
     def get_pending_submissions(self, limit: int) -> List[Dict]:
         """获取待投递的职位匹配记录"""
+```
+
+#### JobStatusDetector
+
+```python
+class JobStatusDetector:
+    """职位状态检测器 - 基于现有架构设计"""
+    
+    def __init__(self, driver, config: Dict[str, Any]):
+        """初始化状态检测器"""
+        self.driver = driver
+        self.config = config
+        self.logger = logging.getLogger(__name__)
+        self._init_detection_rules()
+    
+    def detect_job_status(self) -> JobStatusResult:
+        """检测职位状态 - 一次性获取所有信息避免重复DOM查找"""
+        
+    def _get_page_info_once(self) -> Dict[str, Any]:
+        """一次性获取页面所有需要的信息，避免重复DOM查找，提高性能"""
+        
+    def _analyze_page_status(self, page_info: Dict[str, Any]) -> JobStatusResult:
+        """基于一次性获取的页面信息分析状态"""
 ```
 
 #### ButtonRecognitionEngine
@@ -981,6 +1008,151 @@ class AntiCrawlerSystem:
         
     def simulate_human_behavior(self):
         """模拟人类行为 - 随机鼠标移动、页面滚动等"""
+    
+    def keep_session_alive(self, delay_minutes: float):
+        """在延迟期间保持浏览器会话活跃"""
+        total_seconds = delay_minutes * 60
+        check_interval = 30  # 每30秒检查一次
+        
+        for i in range(0, int(total_seconds), check_interval):
+            if i > 0:  # 第一次不需要等待
+                time.sleep(check_interval)
+            
+            try:
+                # 执行轻量级操作保持会话
+                self.driver.execute_script("return document.readyState;")
+                self.logger.debug(f"会话保活检查 {i//60:.1f}/{delay_minutes:.1f} 分钟")
+            except Exception as e:
+                self.logger.warning(f"会话保活失败: {e}")
+                # 如果会话失效，重新初始化
+                return self._reinitialize_session()
+        
+        return True
+    
+    def handle_session_timeout(self):
+        """处理会话超时，自动重新登录"""
+        try:
+            self.logger.info("检测到会话超时，尝试重新登录...")
+            
+            # 关闭当前会话
+            if self.driver:
+                self.driver.quit()
+            
+            # 重新初始化登录
+            success = self.login_manager.login()
+            if success:
+                self.logger.info("✅ 会话重连成功")
+                return True
+            else:
+                self.logger.error("❌ 会话重连失败")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"会话重连异常: {e}")
+            return False
+```
+
+#### SubmissionDataManager
+
+```python
+class SubmissionDataManager:
+    """投递数据管理器 - 扩展状态处理功能"""
+    
+    def delete_suspended_job(self, match_id: int) -> bool:
+        """删除暂停招聘的职位记录"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # 删除匹配记录
+                cursor.execute("DELETE FROM resume_matches WHERE id = ?", (match_id,))
+                deleted_count = cursor.rowcount
+                
+                conn.commit()
+                
+                if deleted_count > 0:
+                    self.logger.info(f"删除暂停职位记录: match_id={match_id}")
+                    return True
+                else:
+                    self.logger.warning(f"未找到要删除的记录: match_id={match_id}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.error(f"删除暂停职位失败: {e}")
+            return False
+    
+    def mark_as_processed(self, match_id: int, success: bool = True, status_info: str = None) -> bool:
+        """标记职位为已处理"""
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                now = datetime.now().isoformat()
+                
+                cursor.execute("""
+                    UPDATE resume_matches
+                    SET processed = 1, processed_at = ?
+                    WHERE id = ?
+                """, (now, match_id))
+                
+                updated_count = cursor.rowcount
+                conn.commit()
+                
+                if updated_count > 0:
+                    action = "成功处理" if success else "标记处理"
+                    self.logger.info(f"{action}职位记录: match_id={match_id}")
+                    return True
+                else:
+                    self.logger.warning(f"未找到要更新的记录: match_id={match_id}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.error(f"标记职位处理状态失败: {e}")
+            return False
+    
+    def log_job_status_detection(self, job_record, status_result: 'JobStatusResult', action: str):
+        """记录职位状态检测结果到日志"""
+        try:
+            # 创建日志记录
+            log_entry = {
+                'timestamp': status_result.timestamp,
+                'job_id': job_record.job_id,
+                'job_title': job_record.job_title,
+                'company': job_record.company,
+                'job_url': job_record.job_url,
+                'match_id': job_record.id,
+                'action': action,
+                'detection_result': status_result.to_dict()
+            }
+            
+            # 写入投递日志表
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    INSERT INTO submission_logs
+                    (match_id, job_id, submission_status, message, error_details,
+                     execution_time, attempts, button_info, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    job_record.id,
+                    job_record.job_id,
+                    status_result.status.value,
+                    status_result.reason,
+                    status_result.page_content_snippet,
+                    status_result.detection_time,
+                    1,  # 检测尝试次数
+                    json.dumps(status_result.to_dict(), ensure_ascii=False),
+                    status_result.timestamp
+                ))
+                
+                conn.commit()
+            
+            # 同时写入文件日志
+            self._write_status_log_file(log_entry)
+            
+        except Exception as e:
+            self.logger.error(f"记录状态检测日志失败: {e}")
 ```
 
 ### 数据库交互流程
@@ -1099,6 +1271,27 @@ submission_engine:
   daily_limit: 50
   submission_delay_range: [3, 8]  # 3-8秒随机延迟
   
+  # 职位状态检测配置
+  job_status_detection:
+    timeout: 5
+    text_patterns:
+      job_suspended:
+        - "很抱歉，你选择的职位目前已经暂停招聘"
+        - "该职位已暂停招聘"
+        - "职位暂停招聘"
+      job_expired:
+        - "该职位已过期"
+        - "职位已过期"
+        - "招聘已结束"
+      login_required:
+        - "请先登录"
+        - "需要登录后查看"
+        - "登录后投递"
+    
+    applied_indicators:
+      text_patterns: ["已申请", "已投递", "已发送"]
+      class_patterns: ["off", "disabled", "applied"]
+  
   # 按钮识别配置
   button_recognition:
     selectors:
@@ -1115,6 +1308,14 @@ submission_engine:
     
     timeout: 10
     retry_attempts: 3
+  
+  # 会话管理配置
+  session_management:
+    keep_alive_enabled: true
+    keep_alive_interval: 30  # 秒
+    session_timeout_handling: true
+    auto_reconnect: true
+    max_reconnect_attempts: 3
 ```
 
 ## 📊 监控和性能优化架构
@@ -1231,10 +1432,208 @@ spec:
 - **Grafana**: 可视化监控
 - **ELK Stack**: 日志分析
 
+## 🎯 职位状态检测系统设计
+
+### 系统概述
+
+职位状态检测系统是基于现有架构设计的智能检测模块，用于在投递过程中自动识别职位状态，提高投递效率并避免无效操作。
+
+### 核心特性
+
+- **一次性DOM查找**: 避免重复查找相同元素，提高性能
+- **智能状态判断**: 基于已获取信息快速决策
+- **异步日志记录**: 不阻塞主投递流程
+- **架构一致性**: 与现有组件保持一致的设计风格
+- **配置驱动**: 支持通过配置文件自定义检测规则
+
+### 数据模型扩展
+
+#### 新增状态枚举
+
+```python
+# 在现有 SubmissionStatus 枚举中添加新状态
+class SubmissionStatus(Enum):
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
+    ALREADY_APPLIED = "already_applied"
+    BUTTON_NOT_FOUND = "button_not_found"
+    LOGIN_REQUIRED = "login_required"
+    # 新增状态
+    JOB_SUSPENDED = "job_suspended"      # 职位暂停
+    JOB_EXPIRED = "job_expired"          # 职位过期
+    PAGE_ERROR = "page_error"            # 页面错误
+
+# 新增职位状态检测结果数据类
+@dataclass
+class JobStatusResult:
+    """职位状态检测结果"""
+    status: SubmissionStatus
+    reason: str
+    page_content_snippet: Optional[str] = None
+    button_text: Optional[str] = None
+    button_class: Optional[str] = None
+    page_title: Optional[str] = None
+    detection_time: float = 0.0
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'status': self.status.value,
+            'reason': self.reason,
+            'page_content_snippet': self.page_content_snippet,
+            'button_text': self.button_text,
+            'button_class': self.button_class,
+            'page_title': self.page_title,
+            'detection_time': self.detection_time,
+            'timestamp': self.timestamp
+        }
+```
+
+### 状态处理策略
+
+#### 1. 职位暂停处理
+- **检测条件**: 页面显示"很抱歉，你选择的职位目前已经暂停招聘"
+- **处理方式**: 从 `resume_matches` 表中删除记录
+- **目的**: 避免重复处理已暂停的职位
+
+#### 2. 已申请状态处理
+- **检测条件**: 按钮显示"已申请"或包含"off"样式类
+- **处理方式**: 更新 `resume_matches` 表设置 `processed=1`
+- **目的**: 标记该职位已成功投递
+
+#### 3. 其他无法投递状态
+- **处理方式**: 设置 `processed=1` 标记为已处理
+- **日志记录**: 将页面状态内容和按钮状态内容记录到 `logs/` 目录
+- **目的**: 为将来扩展需求保留详细数据
+
+### 性能优化设计
+
+#### 一次性信息获取策略
+
+```python
+def _get_page_info_once(self) -> Dict[str, Any]:
+    """一次性获取页面所有需要的信息，避免重复DOM查找，提高性能"""
+    page_info = {
+        'page_source': self.driver.page_source,      # 包含所有文本内容
+        'apply_button': found_button,                 # 申请按钮元素
+        'button_text': button.text,                   # 按钮文本
+        'button_class': button.get_attribute('class'), # 按钮样式
+        'page_title': self.driver.title               # 页面标题
+    }
+    return page_info
+```
+
+#### 智能状态分析
+
+```python
+def _analyze_page_status(self, page_info: Dict[str, Any]) -> JobStatusResult:
+    """基于一次性获取的页面信息分析状态"""
+    
+    # 1. 检测职位暂停（优先级最高）
+    if "很抱歉，你选择的职位目前已经暂停招聘" in page_source:
+        return JobStatusResult(status=SubmissionStatus.JOB_SUSPENDED, ...)
+    
+    # 2. 检测已申请状态
+    if "已申请" in button_text or "off" in button_class:
+        return JobStatusResult(status=SubmissionStatus.ALREADY_APPLIED, ...)
+    
+    # 3. 检测可用申请按钮
+    if button_text and "申请" in button_text:
+        return JobStatusResult(status=SubmissionStatus.PENDING, ...)
+```
+
+### 会话超时解决方案
+
+#### 问题分析
+- **浏览器会话超时**: 在4.5分钟批次延迟后，Chrome浏览器连接断开
+- **数据不一致**: 失败的职位记录到 `submission_logs` 但 `resume_matches.processed` 字段未更新
+- **用户体验差**: 需要手动修复数据库状态
+
+#### 解决方案
+
+##### 1. 会话保活机制
+```python
+def keep_session_alive(self, delay_minutes: float):
+    """在延迟期间保持浏览器会话活跃"""
+    total_seconds = delay_minutes * 60
+    check_interval = 30  # 每30秒检查一次
+    
+    for i in range(0, int(total_seconds), check_interval):
+        if i > 0:
+            time.sleep(check_interval)
+        
+        try:
+            # 执行轻量级操作保持会话
+            self.driver.execute_script("return document.readyState;")
+            self.logger.debug(f"会话保活检查 {i//60:.1f}/{delay_minutes:.1f} 分钟")
+        except Exception as e:
+            self.logger.warning(f"会话保活失败: {e}")
+            return self._reinitialize_session()
+    
+    return True
+```
+
+##### 2. 智能重连机制
+```python
+def handle_session_timeout(self):
+    """处理会话超时，自动重新登录"""
+    try:
+        self.logger.info("检测到会话超时，尝试重新登录...")
+        
+        # 关闭当前会话
+        if self.driver:
+            self.driver.quit()
+        
+        # 重新初始化登录
+        success = self.login_manager.login()
+        if success:
+            self.logger.info("✅ 会话重连成功")
+            return True
+        else:
+            self.logger.error("❌ 会话重连失败")
+            return False
+            
+    except Exception as e:
+        self.logger.error(f"会话重连异常: {e}")
+        return False
+```
+
+##### 3. 优化批次延迟策略
+```python
+def calculate_adaptive_delay(self, success_count: int, total_count: int) -> float:
+    """根据成功率动态调整延迟时间"""
+    success_rate = success_count / total_count if total_count > 0 else 0
+    
+    if success_rate >= 0.8:  # 成功率高，减少延迟
+        return 2.0  # 2分钟
+    elif success_rate >= 0.5:  # 成功率中等
+        return 3.0  # 3分钟
+    else:  # 成功率低，增加延迟
+        return 4.5  # 4.5分钟
+```
+
+### 实施效果
+
+#### 性能优化
+- **一次性DOM查找**: 避免重复查找相同元素
+- **智能状态判断**: 基于已获取信息快速决策
+- **异步日志记录**: 不阻塞主投递流程
+
+#### 架构一致性
+- **遵循现有模式**: 与现有组件保持一致的设计风格
+- **配置驱动**: 支持通过配置文件自定义检测规则
+- **错误处理**: 采用相同的异常处理机制
+
+#### 功能完整性
+- **精准检测**: 准确识别各种页面状态
+- **智能处理**: 根据状态自动采取相应动作
+- **详细记录**: 完整的日志记录便于分析
+
 ---
 
-**最后更新**: 2025-08-25
-**版本**: v3.2.0
+**最后更新**: 2025-08-27
+**版本**: v3.3.0
 **维护者**: Claude Code Assistant
 
 ## 📋 版本更新记录

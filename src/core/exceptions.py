@@ -90,6 +90,36 @@ class SessionError(ResumeSubmitterError):
     pass
 
 
+class SessionTimeoutError(SessionError):
+    """会话超时异常"""
+    pass
+
+
+class SessionRecoveryError(SessionError):
+    """会话恢复异常"""
+    pass
+
+
+class SessionValidationError(SessionError):
+    """会话验证异常"""
+    pass
+
+
+class BrowserConnectionError(WebDriverError):
+    """浏览器连接异常"""
+    pass
+
+
+class JobStatusDetectionError(SubmissionError):
+    """职位状态检测异常"""
+    pass
+
+
+class ButtonRecognitionError(SubmissionError):
+    """按钮识别异常"""
+    pass
+
+
 class ContentExtractionError(ResumeSubmitterError):
     """内容提取相关异常"""
     pass

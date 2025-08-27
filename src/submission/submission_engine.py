@@ -11,12 +11,13 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from .models import (
-    SubmissionResult, SubmissionReport, SubmissionStatus, 
-    JobMatchRecord, SubmissionConfig, ButtonInfo
+    SubmissionResult, SubmissionReport, SubmissionStatus,
+    JobMatchRecord, SubmissionConfig, ButtonInfo, JobStatusResult
 )
 from .data_manager import SubmissionDataManager
 from .button_recognition import ButtonRecognitionEngine
 from .anti_crawler import AntiCrawlerSystem
+from .job_status_detector import JobStatusDetector
 from ..auth.browser_manager import BrowserManager
 from ..auth.login_manager import LoginManager
 
@@ -49,6 +50,7 @@ class ResumeSubmissionEngine:
         self.login_manager: Optional[LoginManager] = None
         self.button_engine: Optional[ButtonRecognitionEngine] = None
         self.anti_crawler: Optional[AntiCrawlerSystem] = None
+        self.status_detector: Optional[JobStatusDetector] = None
         
         # 执行状态
         self.is_initialized = False
@@ -85,6 +87,9 @@ class ResumeSubmissionEngine:
             
             # 6. 初始化反爬虫系统（使用已存在的driver和数据管理器）
             self.anti_crawler = AntiCrawlerSystem(driver, self.config, self.data_manager)
+            
+            # 7. 初始化职位状态检测器（使用已存在的driver）
+            self.status_detector = JobStatusDetector(driver, self.config)
             
             self.is_initialized = True
             self.logger.info("✅ 投递引擎初始化完成")
@@ -125,6 +130,9 @@ class ResumeSubmissionEngine:
             
             # 6. 初始化反爬虫系统（使用已存在的driver和数据管理器）
             self.anti_crawler = AntiCrawlerSystem(driver, self.config, self.data_manager)
+            
+            # 7. 初始化职位状态检测器（使用已存在的driver）
+            self.status_detector = JobStatusDetector(driver, self.config)
             
             self.is_initialized = True
             self.logger.info("✅ 投递引擎同步初始化完成")
@@ -316,10 +324,10 @@ class ResumeSubmissionEngine:
                     self.anti_crawler.apply_delay()
                     
                     # 风险检查和缓解
-                    if i > 0 and i % 5 == 0:  # 每5个职位检查一次
-                        risk_assessment = self.anti_crawler.check_detection_risk()
-                        if risk_assessment['risk_level'] != 'low':
-                            self.anti_crawler.apply_risk_mitigation(risk_assessment)
+                    # if i > 0 and i % 5 == 0:  # 每5个职位检查一次
+                    #     risk_assessment = self.anti_crawler.check_detection_risk()
+                    #     if risk_assessment['risk_level'] != 'low':
+                    #         self.anti_crawler.apply_risk_mitigation(risk_assessment)
                     
                 except Exception as e:
                     self.logger.error(f"处理职位 {job_record.job_id} 失败: {e}")
@@ -419,10 +427,10 @@ class ResumeSubmissionEngine:
                     self.anti_crawler.apply_delay()
                     
                     # 风险检查和缓解
-                    if i > 0 and i % 5 == 0:  # 每5个职位检查一次
-                        risk_assessment = self.anti_crawler.check_detection_risk()
-                        if risk_assessment['risk_level'] != 'low':
-                            self.anti_crawler.apply_risk_mitigation(risk_assessment)
+                    # if i > 0 and i % 5 == 0:  # 每5个职位检查一次
+                    #     risk_assessment = self.anti_crawler.check_detection_risk()
+                    #     if risk_assessment['risk_level'] != 'low':
+                    #         self.anti_crawler.apply_risk_mitigation(risk_assessment)
                     
                 except Exception as e:
                     self.logger.error(f"处理职位 {job_record.job_id} 失败: {e}")
@@ -504,13 +512,53 @@ class ResumeSubmissionEngine:
                 min_time=3.0, max_time=5.0
             )
             
-            # 4. 检查登录状态
+            # 4. 高效状态检测（新增）
+            if self.status_detector:
+                status_result = self.status_detector.detect_job_status()
+                
+                # 根据检测结果决定处理方式
+                if status_result.status == SubmissionStatus.JOB_SUSPENDED:
+                    # 删除暂停职位
+                    self.data_manager.delete_suspended_job(job_record.id)
+                    self.data_manager.log_job_status_detection(job_record, status_result, "删除暂停职位")
+                    
+                    result.status = SubmissionStatus.JOB_SUSPENDED
+                    result.message = "职位已暂停招聘，已删除记录"
+                    self.logger.info(f"🗑️ 删除暂停职位: {job_record.job_title}")
+                    return result
+                
+                elif status_result.status == SubmissionStatus.ALREADY_APPLIED:
+                    # 标记为已申请
+                    self.data_manager.mark_as_processed(job_record.id, success=True)
+                    self.data_manager.log_job_status_detection(job_record, status_result, "标记已申请")
+                    
+                    result.status = SubmissionStatus.ALREADY_APPLIED
+                    result.message = "检测到已申请状态"
+                    self.logger.info(f"✅ 已申请职位: {job_record.job_title}")
+                    return result
+                
+                elif status_result.status in [SubmissionStatus.BUTTON_NOT_FOUND, SubmissionStatus.PAGE_ERROR, SubmissionStatus.JOB_EXPIRED]:
+                    # 标记为已处理，记录详细信息
+                    self.data_manager.mark_as_processed(job_record.id, success=False)
+                    self.data_manager.log_job_status_detection(job_record, status_result, "无法投递")
+                    
+                    result.status = status_result.status
+                    result.message = f"无法投递: {status_result.reason}"
+                    self.logger.info(f"⏭️ 跳过职位: {job_record.job_title} - {status_result.reason}")
+                    return result
+                
+                # 如果状态是 PENDING，继续正常投递流程
+                elif status_result.status != SubmissionStatus.PENDING:
+                    # 其他未知状态，记录日志但继续尝试投递
+                    self.data_manager.log_job_status_detection(job_record, status_result, "状态检测完成")
+            
+            # 5. 检查登录状态
             if not await self._check_login_status():
                 result.status = SubmissionStatus.LOGIN_REQUIRED
                 result.message = "需要登录"
                 return result
             
-            # 5. 查找申请按钮
+            # 6. 查找申请按钮（如果状态检测器没有找到可用按钮，使用原有逻辑）
             button_info = self.button_engine.find_application_button(job_record.job_url)
             if not button_info:
                 result.status = SubmissionStatus.BUTTON_NOT_FOUND
@@ -606,13 +654,53 @@ class ResumeSubmissionEngine:
                 min_time=2.0, max_time=5.0
             )
             
-            # 4. 检查登录状态（同步版本）
+            # 4. 高效状态检测（新增）
+            if self.status_detector:
+                status_result = self.status_detector.detect_job_status()
+                
+                # 根据检测结果决定处理方式
+                if status_result.status == SubmissionStatus.JOB_SUSPENDED:
+                    # 删除暂停职位
+                    self.data_manager.delete_suspended_job(job_record.id)
+                    self.data_manager.log_job_status_detection(job_record, status_result, "删除暂停职位")
+                    
+                    result.status = SubmissionStatus.JOB_SUSPENDED
+                    result.message = "职位已暂停招聘，已删除记录"
+                    self.logger.info(f"🗑️ 删除暂停职位: {job_record.job_title}")
+                    return result
+                
+                elif status_result.status == SubmissionStatus.ALREADY_APPLIED:
+                    # 标记为已申请
+                    self.data_manager.mark_as_processed(job_record.id, success=True)
+                    self.data_manager.log_job_status_detection(job_record, status_result, "标记已申请")
+                    
+                    result.status = SubmissionStatus.ALREADY_APPLIED
+                    result.message = "检测到已申请状态"
+                    self.logger.info(f"✅ 已申请职位: {job_record.job_title}")
+                    return result
+                
+                elif status_result.status in [SubmissionStatus.BUTTON_NOT_FOUND, SubmissionStatus.PAGE_ERROR, SubmissionStatus.JOB_EXPIRED]:
+                    # 标记为已处理，记录详细信息
+                    self.data_manager.mark_as_processed(job_record.id, success=False)
+                    self.data_manager.log_job_status_detection(job_record, status_result, "无法投递")
+                    
+                    result.status = status_result.status
+                    result.message = f"无法投递: {status_result.reason}"
+                    self.logger.info(f"⏭️ 跳过职位: {job_record.job_title} - {status_result.reason}")
+                    return result
+                
+                # 如果状态是 PENDING，继续正常投递流程
+                elif status_result.status != SubmissionStatus.PENDING:
+                    # 其他未知状态，记录日志但继续尝试投递
+                    self.data_manager.log_job_status_detection(job_record, status_result, "状态检测完成")
+            
+            # 5. 检查登录状态（同步版本）
             if not self._check_login_status_sync():
                 result.status = SubmissionStatus.LOGIN_REQUIRED
                 result.message = "需要登录"
                 return result
             
-            # 5. 查找申请按钮
+            # 6. 查找申请按钮（如果状态检测器没有找到可用按钮，使用原有逻辑）
             button_info = self.button_engine.find_application_button(job_record.job_url)
             if not button_info:
                 result.status = SubmissionStatus.BUTTON_NOT_FOUND

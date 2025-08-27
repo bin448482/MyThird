@@ -2,6 +2,7 @@
 反爬虫系统
 
 基于现有的BehaviorSimulator，为投递功能提供专门的反爬虫策略
+增强版：支持会话保活和智能重连
 """
 
 import logging
@@ -9,14 +10,18 @@ import random
 import time
 from typing import Dict, Any, Optional
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import WebDriverException
 
 from ..utils.behavior_simulator import BehaviorSimulator
+from ..auth.session_keeper import SessionKeeper
+from ..auth.session_recovery import SessionRecovery
 
 
 class AntiCrawlerSystem:
-    """反爬虫系统 - 基于BehaviorSimulator的封装"""
+    """反爬虫系统 - 基于BehaviorSimulator的封装，增强版支持会话保活"""
     
-    def __init__(self, driver, config: Dict[str, Any], data_manager=None):
+    def __init__(self, driver, config: Dict[str, Any], data_manager=None,
+                 browser_manager=None, login_manager=None):
         """
         初始化反爬虫系统
         
@@ -24,26 +29,45 @@ class AntiCrawlerSystem:
             driver: WebDriver实例
             config: 配置字典
             data_manager: 数据管理器实例，用于获取真实的投递统计
+            browser_manager: 浏览器管理器实例
+            login_manager: 登录管理器实例
         """
         self.driver = driver
         self.config = config
         self.data_manager = data_manager
+        self.browser_manager = browser_manager
+        self.login_manager = login_manager
         self.logger = logging.getLogger(__name__)
         
         # 初始化行为模拟器
         self.behavior_simulator = BehaviorSimulator(driver, config)
         
+        # 初始化会话保活器
+        self.session_keeper = SessionKeeper(driver, check_interval=30)
+        
+        # 初始化会话恢复器（如果提供了必要的管理器）
+        self.session_recovery = None
+        if browser_manager and login_manager:
+            self.session_recovery = SessionRecovery(browser_manager, login_manager, config)
+        
         # 投递专用配置
         self.submission_config = config.get('submission_engine', {})
-        self.delay_range = self.submission_config.get('submission_delay_range', [3.0, 8.0])
+        self.delay_range = self.submission_config.get('submission_delay_range', [2.0, 5.0])
         self.max_daily_submissions = self.submission_config.get('max_daily_submissions', 50)
+        
+        # 会话保活配置
+        self.session_config = config.get('session_management', {})
+        self.enable_session_keepalive = self.session_config.get('enable_keepalive', True)
+        self.keepalive_threshold = self.session_config.get('keepalive_threshold_minutes', 2.0)
         
         # 统计信息
         self.stats = {
             'total_delays': 0,
             'total_delay_time': 0.0,
             'daily_submission_count': self._get_actual_daily_count(),
-            'last_reset_date': time.strftime('%Y-%m-%d')
+            'last_reset_date': time.strftime('%Y-%m-%d'),
+            'session_recoveries': 0,
+            'keepalive_activations': 0
         }
     
     def get_random_delay(self, base_delay: float = None) -> float:
@@ -120,7 +144,7 @@ class AntiCrawlerSystem:
     
     def safe_navigate_to_job(self, job_url: str) -> bool:
         """
-        安全导航到职位页面（简化版本）
+        安全导航到职位页面（增强版，支持会话恢复）
         
         Args:
             job_url: 职位URL
@@ -128,7 +152,7 @@ class AntiCrawlerSystem:
         Returns:
             是否导航成功
         """
-        try:
+        def _navigate_operation():
             self.logger.info(f"安全导航到职位页面: {job_url}")
             
             # 检查URL有效性
@@ -140,7 +164,7 @@ class AntiCrawlerSystem:
             self.driver.get(job_url)
             
             # 等待页面加载
-            time.sleep(3)
+            time.sleep(1)
             
             # 验证页面是否正确加载
             current_url = self.driver.current_url
@@ -150,10 +174,24 @@ class AntiCrawlerSystem:
             else:
                 self.logger.warning(f"页面加载异常，当前URL: {current_url}")
                 return False
-                
-        except Exception as e:
-            self.logger.error(f"安全导航失败: {e}")
-            return False
+        
+        # 如果有会话恢复器，使用带恢复的导航
+        if self.session_recovery:
+            try:
+                return self.session_recovery.with_session_recovery(
+                    _navigate_operation,
+                    f"导航到职位页面: {job_url}"
+                )
+            except Exception as e:
+                self.logger.error(f"会话恢复导航失败: {e}")
+                return False
+        else:
+            # 传统导航方式
+            try:
+                return _navigate_operation()
+            except Exception as e:
+                self.logger.error(f"安全导航失败: {e}")
+                return False
     
     def _is_valid_job_page(self, current_url: str) -> bool:
         """
@@ -234,38 +272,95 @@ class AntiCrawlerSystem:
             self.logger.error(f"安全点击失败: {e}")
             return False
     
-    def get_batch_delay(self, batch_size: int, completed_count: int) -> float:
+    def get_batch_delay(self, batch_size: int, completed_count: int,
+                       success_count: int = None) -> float:
         """
-        获取批次间延迟
+        获取智能批次间延迟（基于成功率动态调整）
         
         Args:
             batch_size: 批次大小
             completed_count: 已完成数量
+            success_count: 成功数量
             
         Returns:
             延迟时间（秒）
         """
         # 每完成一个批次，增加延迟
         if completed_count > 0 and completed_count % batch_size == 0:
-            # 批次间延迟：2-5分钟
-            batch_delay = random.uniform(120, 300)
-            self.logger.info(f"批次间延迟: {batch_delay/60:.1f}分钟")
+            # 基础延迟：2-5分钟
+            base_delay = random.uniform(120, 300)
+            
+            # 如果提供了成功率信息，动态调整
+            if success_count is not None:
+                success_rate = success_count / completed_count if completed_count > 0 else 0
+                delay_multiplier = self._calculate_delay_multiplier(success_rate)
+                batch_delay = base_delay * delay_multiplier
+                
+                self.logger.info(f"智能批次延迟: {batch_delay/60:.1f}分钟 "
+                               f"(成功率: {success_rate:.1%}, 调整系数: {delay_multiplier:.2f})")
+            else:
+                batch_delay = base_delay
+                self.logger.info(f"批次间延迟: {batch_delay/60:.1f}分钟")
+            
             return batch_delay
         
         return 0.0
     
-    def apply_batch_delay(self, batch_size: int, completed_count: int):
+    def _calculate_delay_multiplier(self, success_rate: float) -> float:
         """
-        应用批次间延迟
+        根据成功率计算延迟调整系数
+        
+        Args:
+            success_rate: 成功率 (0.0-1.0)
+            
+        Returns:
+            延迟调整系数
+        """
+        if success_rate >= 0.8:
+            # 成功率高，减少延迟
+            return random.uniform(0.5, 0.7)
+        elif success_rate >= 0.5:
+            # 成功率中等，正常延迟
+            return random.uniform(0.8, 1.2)
+        else:
+            # 成功率低，增加延迟
+            return random.uniform(1.5, 2.0)
+    
+    def apply_batch_delay(self, batch_size: int, completed_count: int,
+                         success_count: int = None):
+        """
+        应用智能批次间延迟（带会话保活）
         
         Args:
             batch_size: 批次大小
             completed_count: 已完成数量
+            success_count: 成功数量
         """
-        delay = self.get_batch_delay(batch_size, completed_count)
+        delay = self.get_batch_delay(batch_size, completed_count, success_count)
         if delay > 0:
-            self.logger.info(f"应用批次延迟: {delay/60:.1f}分钟")
-            time.sleep(delay)
+            delay_minutes = delay / 60
+            
+            # 如果延迟时间超过阈值且启用了会话保活
+            if (self.enable_session_keepalive and
+                delay_minutes >= self.keepalive_threshold):
+                
+                self.logger.info(f"启用会话保活的批次延迟: {delay_minutes:.1f}分钟")
+                self.stats['keepalive_activations'] += 1
+                
+                # 使用会话保活器
+                if self.session_keeper.keep_alive_during_delay(delay_minutes):
+                    self.logger.info("✅ 批次延迟完成，会话保持有效")
+                else:
+                    self.logger.warning("⚠️ 批次延迟期间会话失效，尝试恢复...")
+                    if self.session_recovery:
+                        if self.session_recovery.handle_session_timeout("批次延迟"):
+                            self.stats['session_recoveries'] += 1
+                        else:
+                            raise WebDriverException("会话恢复失败，无法继续批次处理")
+            else:
+                # 传统延迟方式
+                self.logger.info(f"应用批次延迟: {delay_minutes:.1f}分钟")
+                time.sleep(delay)
     
     def check_daily_limit(self) -> bool:
         """

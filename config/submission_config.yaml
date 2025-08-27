@@ -14,6 +14,16 @@ submission_engine:
   manual_login_timeout: 300         # 手动登录超时时间（秒）
   session_check_interval: 60       # 会话检查间隔（秒）
 
+  # 会话管理配置（新增）
+  session_management:
+    enable_keepalive: true          # 启用会话保活
+    keepalive_threshold_minutes: 2.0 # 超过此时间的延迟启用保活（分钟）
+    keepalive_check_interval: 30    # 保活检查间隔（秒）
+    enable_auto_recovery: true      # 启用自动会话恢复
+    recovery_max_attempts: 3        # 会话恢复最大尝试次数
+    recovery_delay: 30              # 会话恢复重试延迟（秒）
+    session_timeout: 10             # 会话检查超时（秒）
+
   # 反爬虫配置
   random_delay: true                # 是否启用随机延迟
   user_agent_rotation: true        # 是否轮换User-Agent
@@ -146,10 +156,18 @@ security:
     max_submissions: 50
     reset_time: "00:00"      # 每日重置时间
   
-  # 批次限制
+  # 批次限制（优化版）
   batch_limits:
     max_batch_size: 20
     batch_interval: 120      # 批次间隔（秒）
+    adaptive_delay: true     # 启用自适应延迟
+    success_rate_threshold:  # 基于成功率的延迟调整
+      high_success: 0.8      # 高成功率阈值
+      medium_success: 0.5    # 中等成功率阈值
+    delay_multipliers:       # 延迟倍数
+      high_success: [0.5, 0.7]    # 高成功率时减少延迟
+      medium_success: [0.8, 1.2]  # 中等成功率时正常延迟
+      low_success: [1.5, 2.0]     # 低成功率时增加延迟
   
   # 风险控制
   risk_control:
@@ -196,8 +214,19 @@ integration:
       daily_limit_reached: true
       high_error_rate: true   # 错误率超过50%时通知
 
+# 会话恢复配置（新增）
+session_recovery:
+  max_retry_attempts: 3       # 最大恢复尝试次数
+  retry_delay: 30            # 重试延迟（秒）
+  session_check_timeout: 10  # 会话检查超时（秒）
+  auto_recovery_enabled: true # 启用自动恢复
+  recovery_strategies:
+    browser_restart: true    # 重启浏览器
+    relogin: true           # 重新登录
+    session_restore: true   # 恢复会话
+
 # 版本信息
 version:
-  config_version: "1.0.0"
-  last_updated: "2025-08-25"
-  compatible_engine_versions: ["1.0.0"]
+  config_version: "1.1.0"    # 更新版本号
+  last_updated: "2025-08-27"
+  compatible_engine_versions: ["1.0.0", "1.1.0"]

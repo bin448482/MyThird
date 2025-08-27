@@ -10,8 +10,9 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from contextlib import contextmanager
 
-from .models import JobMatchRecord, SubmissionResult, SubmissionStatus
+from .models import JobMatchRecord, SubmissionResult, SubmissionStatus, JobStatusResult
 from ..database.operations import DatabaseManager
+import json
 
 
 class SubmissionDataManager:
@@ -445,7 +446,7 @@ class SubmissionDataManager:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
-                    DELETE FROM submission_logs 
+                    DELETE FROM submission_logs
                     WHERE created_at < datetime('now', '-{} days')
                 """.format(days))
                 
@@ -458,3 +459,142 @@ class SubmissionDataManager:
         except Exception as e:
             self.logger.error(f"清理旧日志失败: {e}")
             return 0
+    
+    def delete_suspended_job(self, match_id: int) -> bool:
+        """
+        删除暂停招聘的职位记录
+        
+        Args:
+            match_id: 匹配记录ID
+            
+        Returns:
+            是否删除成功
+        """
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # 删除匹配记录
+                cursor.execute("DELETE FROM resume_matches WHERE id = ?", (match_id,))
+                deleted_count = cursor.rowcount
+                
+                conn.commit()
+                
+                if deleted_count > 0:
+                    self.logger.info(f"删除暂停职位记录: match_id={match_id}")
+                    return True
+                else:
+                    self.logger.warning(f"未找到要删除的记录: match_id={match_id}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.error(f"删除暂停职位失败: {e}")
+            return False
+
+    def mark_as_processed(self, match_id: int, success: bool = True, status_info: str = None) -> bool:
+        """
+        标记职位为已处理
+        
+        Args:
+            match_id: 匹配记录ID
+            success: 是否成功处理
+            status_info: 状态信息
+            
+        Returns:
+            是否更新成功
+        """
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                now = datetime.now().isoformat()
+                
+                cursor.execute("""
+                    UPDATE resume_matches
+                    SET processed = 1, processed_at = ?
+                    WHERE id = ?
+                """, (now, match_id))
+                
+                updated_count = cursor.rowcount
+                conn.commit()
+                
+                if updated_count > 0:
+                    action = "成功处理" if success else "标记处理"
+                    self.logger.info(f"{action}职位记录: match_id={match_id}")
+                    return True
+                else:
+                    self.logger.warning(f"未找到要更新的记录: match_id={match_id}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.error(f"标记职位处理状态失败: {e}")
+            return False
+
+    def log_job_status_detection(self, job_record: JobMatchRecord, status_result: JobStatusResult, action: str):
+        """
+        记录职位状态检测结果到日志
+        
+        Args:
+            job_record: 职位记录
+            status_result: 状态检测结果
+            action: 执行的动作
+        """
+        try:
+            # 创建日志记录
+            log_entry = {
+                'timestamp': status_result.timestamp,
+                'job_id': job_record.job_id,
+                'job_title': job_record.job_title,
+                'company': job_record.company,
+                'job_url': job_record.job_url,
+                'match_id': job_record.id,
+                'action': action,
+                'detection_result': status_result.to_dict()
+            }
+            
+            # 写入投递日志表
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    INSERT INTO submission_logs
+                    (match_id, job_id, submission_status, message, error_details,
+                     execution_time, attempts, button_info, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    job_record.id,
+                    job_record.job_id,
+                    status_result.status.value,
+                    status_result.reason,
+                    status_result.page_content_snippet,
+                    status_result.detection_time,
+                    1,  # 检测尝试次数
+                    json.dumps(status_result.to_dict(), ensure_ascii=False),
+                    status_result.timestamp
+                ))
+                
+                conn.commit()
+            
+            # 同时写入文件日志
+            self._write_status_log_file(log_entry)
+            
+        except Exception as e:
+            self.logger.error(f"记录状态检测日志失败: {e}")
+
+    def _write_status_log_file(self, log_entry: Dict[str, Any]):
+        """写入状态检测日志文件"""
+        try:
+            from pathlib import Path
+            
+            # 确保logs目录存在
+            logs_dir = Path("logs")
+            logs_dir.mkdir(exist_ok=True)
+            
+            # 按日期分文件
+            log_file = logs_dir / f"job_status_{datetime.now().strftime('%Y%m%d')}.log"
+            
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+                
+        except Exception as e:
+            self.logger.error(f"写入状态日志文件失败: {e}")
