@@ -42,7 +42,8 @@ class ResumeSubmissionEngine:
         
         # 初始化组件
         self.data_manager = SubmissionDataManager(
-            config.get('database_path', 'data/jobs.db')
+            config.get('database_path', 'data/jobs.db'),
+            config  # 传递完整配置给数据管理器
         )
         
         # 浏览器和登录管理器（延迟初始化）

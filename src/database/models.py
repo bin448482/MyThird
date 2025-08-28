@@ -111,7 +111,7 @@ class DatabaseSchema:
     )
     """
     
-    # 简历匹配结果表
+    # 简历匹配结果表（移除外键约束，支持自由删除和重复匹配）
     RESUME_MATCHES_TABLE = """
     CREATE TABLE IF NOT EXISTS resume_matches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,8 +128,7 @@ class DatabaseSchema:
         match_reasons TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         processed BOOLEAN DEFAULT FALSE,
-        processed_at TIMESTAMP,
-        FOREIGN KEY (job_id) REFERENCES jobs (job_id)
+        processed_at TIMESTAMP
     )
     """
     

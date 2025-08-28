@@ -33,10 +33,10 @@ class GenericResumeJobMatcher:
         # 初始化组件
         self.search_engine = SemanticSearchEngine(vector_manager, config)
         
-        # 匹配参数配置
-        self.default_search_k = config.get('default_search_k', 60)
-        self.min_score_threshold = config.get('min_score_threshold', 0.3)
-        self.max_results = config.get('max_results', 20)
+        # 匹配参数配置 - 提高阈值降低匹配率，确保质量
+        self.default_search_k = config.get('default_search_k', 80)  # 增加搜索范围
+        self.min_score_threshold = config.get('min_score_threshold', 0.45)  # 提高最低阈值到0.45，确保匹配质量
+        self.max_results = config.get('max_results', 30)  # 增加最大结果数
         
         # 动态权重配置 - 从配置文件读取
         self.matching_weights = self._load_matching_weights(config)
@@ -54,18 +54,45 @@ class GenericResumeJobMatcher:
         }
     
     def _load_matching_weights(self, config: Dict) -> Dict[str, float]:
-        """从配置文件加载匹配权重"""
-        # 默认权重
+        """从配置文件加载匹配权重 - 支持高级匹配配置"""
+        # 优化的默认权重 - 针对20年经验资深人士
         default_weights = {
-            'semantic_similarity': 0.35,
-            'skills_match': 0.30,
-            'experience_match': 0.20,
-            'industry_match': 0.10,
-            'salary_match': 0.05
+            'semantic_similarity': 0.40,  # 语义相似度权重
+            'skills_match': 0.45,         # 技能匹配权重（最重要）
+            'experience_match': 0.05,     # 经验权重（20年经验基本都满足）
+            'industry_match': 0.02,       # 行业权重（IT跨行业）
+            'salary_match': 0.08          # 薪资权重（重要但不是决定性）
         }
         
-        # 尝试从配置文件读取
-        if config and 'modules' in config and 'resume_matching' in config['modules']:
+        # 优先读取高级匹配配置
+        if config and 'resume_matching_advanced' in config:
+            advanced_config = config['resume_matching_advanced']
+            
+            # 读取高级权重配置
+            if 'matching_weights' in advanced_config:
+                advanced_weights = advanced_config['matching_weights']
+                default_weights.update(advanced_weights)
+                self.logger.info(f"🚀 使用高级匹配权重配置: {default_weights}")
+            
+            # 读取高级阈值配置
+            if 'match_thresholds' in advanced_config:
+                thresholds = advanced_config['match_thresholds']
+                if 'poor' in thresholds:
+                    self.min_score_threshold = thresholds['poor']
+                    self.logger.info(f"🎯 使用高级匹配阈值: {self.min_score_threshold}")
+            
+            # 读取高级搜索范围配置
+            if 'default_search_k' in advanced_config:
+                self.default_search_k = advanced_config['default_search_k']
+                self.logger.info(f"🔍 使用高级搜索范围: {self.default_search_k}")
+            
+            # 读取高级最大结果配置
+            if 'max_results' in advanced_config:
+                self.max_results = advanced_config['max_results']
+                self.logger.info(f"📊 使用高级最大结果数: {self.max_results}")
+        
+        # 回退到标准配置读取
+        elif config and 'modules' in config and 'resume_matching' in config['modules']:
             resume_matching_config = config['modules']['resume_matching']
             
             if 'algorithms' in resume_matching_config:
@@ -88,11 +115,12 @@ class GenericResumeJobMatcher:
                             default_weights['semantic_similarity'] += weight * 0.5
                             default_weights['skills_match'] += weight * 0.5
                 
-                self.logger.info(f"从配置文件加载匹配权重: {default_weights}")
+                self.logger.info(f"从标准配置文件加载匹配权重: {default_weights}")
         
         # 也支持直接的 weights 配置（向后兼容）
         if config and 'weights' in config:
             default_weights.update(config['weights'])
+            self.logger.info(f"使用直接权重配置: {default_weights}")
         
         # 确保权重总和为1.0
         total_weight = sum(default_weights.values())
@@ -111,41 +139,63 @@ class GenericResumeJobMatcher:
         start_time = time.time()
         
         try:
-            self.logger.info(f"开始为 {resume_profile.name} 查找匹配职位，目标数量: {top_k}")
+            self.logger.info(f"🔍 开始为 {resume_profile.name} 查找匹配职位，目标数量: {top_k}")
+            self.logger.info(f"📊 简历基本信息: 经验{resume_profile.total_experience_years}年, 技能数量{len(resume_profile.get_all_skills())}")
             
             # 1. 构建个性化查询
             query = self._build_personalized_query(resume_profile)
-            self.logger.debug(f"构建查询: {query[:100]}...")
+            self.logger.debug(f"🔤 构建查询: {query[:100]}...")
             
             # 2. 执行语义搜索
+            search_k = min(self.default_search_k, top_k * 3)
+            self.logger.info(f"🔍 执行语义搜索，搜索范围: {search_k}")
             search_results = await self._execute_semantic_search(
-                query, filters, k=min(self.default_search_k, top_k * 3)
+                query, filters, k=search_k
             )
             
-            self.logger.info(f"语义搜索返回 {len(search_results)} 个候选文档")
+            self.logger.info(f"📄 语义搜索返回 {len(search_results)} 个候选文档")
             
             # 3. 按职位ID分组文档
             jobs_by_id = self._group_results_by_job(search_results)
-            self.logger.info(f"分组后得到 {len(jobs_by_id)} 个候选职位")
+            self.logger.info(f"📋 分组后得到 {len(jobs_by_id)} 个候选职位")
             
             # 4. 计算匹配分数
             matching_jobs = []
+            failed_matches = 0
+            below_threshold = 0
+            
             for job_id, job_docs in jobs_by_id.items():
                 try:
                     match_result = await self._calculate_match_score(
                         resume_profile, job_docs, job_id
                     )
                     
-                    if match_result and match_result.overall_score >= self.min_score_threshold:
-                        matching_jobs.append(match_result)
+                    if match_result:
+                        if match_result.overall_score >= self.min_score_threshold:
+                            matching_jobs.append(match_result)
+                            self.logger.debug(f"✅ 职位 {job_id} 匹配成功，分数: {match_result.overall_score:.3f}")
+                        else:
+                            below_threshold += 1
+                            self.logger.debug(f"⚠️ 职位 {job_id} 分数过低: {match_result.overall_score:.3f} < {self.min_score_threshold}")
+                    else:
+                        failed_matches += 1
                         
                 except Exception as e:
-                    self.logger.warning(f"计算职位 {job_id} 匹配度失败: {str(e)}")
+                    failed_matches += 1
+                    self.logger.warning(f"❌ 计算职位 {job_id} 匹配度失败: {str(e)}")
                     continue
+            
+            # 记录匹配统计
+            self.logger.info(f"📊 匹配统计: 成功{len(matching_jobs)}, 低分{below_threshold}, 失败{failed_matches}")
             
             # 5. 排序和筛选结果
             matching_jobs.sort(key=lambda x: x.overall_score, reverse=True)
             top_matches = matching_jobs[:top_k]
+            
+            if top_matches:
+                best_score = top_matches[0].overall_score
+                worst_score = top_matches[-1].overall_score
+                self.logger.info(f"🏆 最终结果分数范围: {worst_score:.3f} - {best_score:.3f}")
             
             # 6. 生成匹配摘要和洞察
             processing_time = time.time() - start_time
@@ -157,12 +207,15 @@ class GenericResumeJobMatcher:
                 matching_summary=summary,
                 matches=top_matches,
                 career_insights=insights,
-                resume_profile=resume_profile,  # 这里可能需要转换
+                resume_profile=resume_profile,
                 query_metadata={
                     'query': query,
                     'filters': filters,
                     'search_results_count': len(search_results),
                     'candidate_jobs_count': len(jobs_by_id),
+                    'successful_matches': len(matching_jobs),
+                    'failed_matches': failed_matches,
+                    'below_threshold': below_threshold,
                     'processing_time': processing_time
                 }
             )
@@ -170,12 +223,20 @@ class GenericResumeJobMatcher:
             # 更新性能统计
             self._update_performance_stats(processing_time, len(top_matches))
             
-            self.logger.info(f"匹配完成，返回 {len(top_matches)} 个职位，耗时 {processing_time:.2f}秒")
+            self.logger.info(f"✅ 匹配完成，返回 {len(top_matches)} 个职位，耗时 {processing_time:.2f}秒")
+            
+            # 记录匹配率警告
+            if len(jobs_by_id) > 0:
+                match_rate = len(matching_jobs) / len(jobs_by_id)
+                if match_rate < 0.2:
+                    self.logger.warning(f"⚠️ 匹配率过低: {match_rate:.1%} ({len(matching_jobs)}/{len(jobs_by_id)})")
+                else:
+                    self.logger.info(f"📈 匹配率: {match_rate:.1%} ({len(matching_jobs)}/{len(jobs_by_id)})")
             
             return result
             
         except Exception as e:
-            self.logger.error(f"职位匹配失败: {str(e)}")
+            self.logger.error(f"💥 职位匹配失败: {str(e)}")
             raise
     
     def _build_personalized_query(self, resume_profile: GenericResumeProfile) -> str:
@@ -221,14 +282,30 @@ class GenericResumeJobMatcher:
                                      query: str,
                                      filters: Dict[str, Any] = None,
                                      k: int = 60) -> List[Tuple[Document, float]]:
-        """执行语义搜索"""
+        """执行语义搜索 - 支持时间感知搜索"""
         try:
-            # 直接调用向量管理器的搜索方法，返回 (Document, float) 元组
-            search_results = self.vector_manager.similarity_search_with_score(
-                query=query,
-                k=k,
-                filters=filters
-            )
+            # 检查是否启用时间感知搜索
+            time_aware_config = self.config.get('time_aware_search', {})
+            enable_time_aware = time_aware_config.get('enable_time_boost', True)
+            search_strategy = time_aware_config.get('search_strategy', 'hybrid')
+            
+            if enable_time_aware and hasattr(self.vector_manager, 'time_aware_similarity_search'):
+                # 使用时间感知搜索
+                self.logger.info(f"🕒 使用时间感知搜索，策略: {search_strategy}")
+                search_results = self.vector_manager.time_aware_similarity_search(
+                    query=query,
+                    k=k,
+                    filters=filters,
+                    strategy=search_strategy
+                )
+            else:
+                # 使用传统搜索
+                self.logger.debug("使用传统向量搜索")
+                search_results = self.vector_manager.similarity_search_with_score(
+                    query=query,
+                    k=k,
+                    filters=filters
+                )
             
             return search_results
             
@@ -248,7 +325,7 @@ class GenericResumeJobMatcher:
         
         return dict(jobs_by_id)
     
-    async def _calculate_match_score(self, 
+    async def _calculate_match_score(self,
                                    resume_profile: GenericResumeProfile,
                                    job_docs: List[Document],
                                    job_id: str) -> Optional[JobMatchResult]:
@@ -256,6 +333,9 @@ class GenericResumeJobMatcher:
         try:
             # 提取职位元数据
             job_metadata = self._extract_job_metadata(job_docs, job_id)
+            job_title = job_metadata.get('job_title', 'Unknown Position')
+            
+            self.logger.debug(f"🔢 开始计算职位 {job_id} ({job_title}) 的匹配分数")
             
             # 计算各维度分数
             semantic_score = self._calculate_semantic_similarity(resume_profile, job_docs)
@@ -263,6 +343,10 @@ class GenericResumeJobMatcher:
             experience_score = self._calculate_experience_match(resume_profile, job_metadata)
             industry_score = self._calculate_industry_match(resume_profile, job_metadata)
             salary_score = self._calculate_salary_match(resume_profile, job_metadata)
+            
+            # 记录各维度分数
+            self.logger.debug(f"📊 {job_id} 各维度分数: 语义{semantic_score:.3f}, 技能{skills_score:.3f}, "
+                            f"经验{experience_score:.3f}, 行业{industry_score:.3f}, 薪资{salary_score:.3f}")
             
             # 计算加权总分
             dimension_scores = {
@@ -281,6 +365,13 @@ class GenericResumeJobMatcher:
                 salary_score * self.matching_weights['salary_match']
             )
             
+            self.logger.debug(f"🎯 {job_id} 加权总分: {overall_score:.3f} "
+                            f"(权重: 语义{self.matching_weights['semantic_similarity']}, "
+                            f"技能{self.matching_weights['skills_match']}, "
+                            f"经验{self.matching_weights['experience_match']}, "
+                            f"行业{self.matching_weights['industry_match']}, "
+                            f"薪资{self.matching_weights['salary_match']})")
+            
             # 生成匹配分析
             match_analysis = self._generate_match_analysis(
                 resume_profile, job_docs, job_metadata, dimension_scores
@@ -289,7 +380,7 @@ class GenericResumeJobMatcher:
             # 创建匹配结果
             match_result = JobMatchResult(
                 job_id=job_metadata.get('job_id', 'unknown'),
-                job_title=job_metadata.get('job_title', 'Unknown Position'),
+                job_title=job_title,
                 company=job_metadata.get('company', 'Unknown Company'),
                 location=job_metadata.get('location'),
                 salary_range=job_metadata.get('salary_range'),
@@ -305,7 +396,7 @@ class GenericResumeJobMatcher:
             return match_result
             
         except Exception as e:
-            self.logger.error(f"计算职位 {job_id} 匹配度失败: {str(e)}")
+            self.logger.error(f"💥 计算职位 {job_id} 匹配度失败: {str(e)}")
             return None
     
     def _calculate_semantic_similarity(self, 
@@ -426,38 +517,74 @@ class GenericResumeJobMatcher:
             self.logger.error(f"计算行业匹配度失败: {str(e)}")
             return 0.0
     
-    def _calculate_salary_match(self, 
+    def _calculate_salary_match(self,
                               resume_profile: GenericResumeProfile,
                               job_metadata: Dict[str, Any]) -> float:
-        """计算薪资匹配度"""
+        """计算薪资匹配度 - 优化版本，更宽松的匹配条件"""
         try:
             job_salary_range = job_metadata.get('salary_range')
             
+            # 如果任一方没有薪资信息，给予中等分数
             if not job_salary_range or not resume_profile.expected_salary_range:
+                self.logger.debug("薪资信息缺失，返回默认分数 0.8")
                 return 0.8
             
             resume_min = resume_profile.expected_salary_range.get('min', 0)
             resume_max = resume_profile.expected_salary_range.get('max', 0)
             
             if resume_min == 0 and resume_max == 0:
+                self.logger.debug("简历期望薪资为0，返回默认分数 0.8")
                 return 0.8
             
             job_min = job_salary_range.get('min', 0)
             job_max = job_salary_range.get('max', float('inf'))
             
-            # 计算薪资范围重叠度
+            self.logger.debug(f"薪资匹配计算: 简历期望 {resume_min}-{resume_max}, 职位提供 {job_min}-{job_max}")
+            
+            # 1. 检查是否有重叠
             overlap_min = max(resume_min, job_min)
             overlap_max = min(resume_max, job_max)
             
             if overlap_max >= overlap_min:
+                # 有重叠，计算重叠度
                 overlap_size = overlap_max - overlap_min
                 resume_range_size = resume_max - resume_min
                 job_range_size = job_max - job_min if job_max != float('inf') else resume_range_size
                 
                 if resume_range_size > 0 and job_range_size > 0:
                     overlap_ratio = overlap_size / min(resume_range_size, job_range_size)
-                    return min(1.0, overlap_ratio)
+                    score = min(1.0, overlap_ratio)
+                    self.logger.debug(f"薪资有重叠，重叠度: {overlap_ratio:.3f}, 分数: {score:.3f}")
+                    return score
             
+            # 2. 没有重叠，但检查是否在合理范围内
+            resume_mid = (resume_min + resume_max) / 2
+            job_mid = (job_min + job_max) / 2 if job_max != float('inf') else job_min * 1.5
+            
+            # 计算薪资差距比例
+            if job_mid > 0:
+                gap_ratio = abs(resume_mid - job_mid) / job_mid
+                
+                # 根据差距给分
+                if gap_ratio <= 0.2:  # 差距在20%以内
+                    score = 0.8
+                elif gap_ratio <= 0.4:  # 差距在40%以内
+                    score = 0.6
+                elif gap_ratio <= 0.6:  # 差距在60%以内
+                    score = 0.4
+                else:  # 差距超过60%
+                    score = 0.2
+                
+                self.logger.debug(f"薪资无重叠，差距比例: {gap_ratio:.3f}, 分数: {score:.3f}")
+                return score
+            
+            # 3. 特殊情况：如果简历期望明显低于职位提供，给高分
+            if resume_max <= job_min * 1.2:  # 简历最高期望不超过职位最低的120%
+                self.logger.debug("简历期望薪资合理偏低，给予高分 0.9")
+                return 0.9
+            
+            # 4. 默认情况
+            self.logger.debug("薪资匹配默认情况，返回 0.5")
             return 0.5
             
         except Exception as e:

@@ -74,18 +74,63 @@ async def submit_all_remaining_jobs():
         
         print("✅ 引擎初始化成功")
         
-        # 4. 获取待投递职位总数
-        print("\n📊 检查待投递职位...")
-        all_pending_jobs = engine.data_manager.get_unprocessed_matches(limit=10000)
-        total_jobs = len(all_pending_jobs)
+        # 4. 检查薪资过滤配置
+        print("\n💰 检查薪资过滤配置...")
+        salary_filter_config = config.get('integration_system', {}).get('decision_engine', {}).get('salary_filters', {})
+        salary_filter_enabled = salary_filter_config.get('enabled', False)
+        salary_threshold = salary_filter_config.get('min_salary_match_score', 0.3)
         
-        print(f"📋 待投递职位总数: {total_jobs}")
+        print(f"  薪资过滤状态: {'✅ 启用' if salary_filter_enabled else '❌ 禁用'}")
+        if salary_filter_enabled:
+            print(f"  薪资匹配阈值: {salary_threshold} ({salary_threshold*100:.0f}%)")
+            print(f"  严格模式: {'✅ 是' if salary_filter_config.get('strict_mode', True) else '❌ 否'}")
+        
+        # 5. 获取待投递职位总数（不应用薪资过滤）
+        print("\n📊 检查待投递职位...")
+        all_pending_jobs_raw = engine.data_manager.get_unprocessed_matches(limit=10000, apply_salary_filter=False)
+        total_jobs_raw = len(all_pending_jobs_raw)
+        
+        # 获取薪资过滤后的职位
+        all_pending_jobs_filtered = engine.data_manager.get_unprocessed_matches(limit=10000, apply_salary_filter=True)
+        total_jobs_filtered = len(all_pending_jobs_filtered)
+        
+        print(f"📋 原始待投递职位总数: {total_jobs_raw}")
+        if salary_filter_enabled:
+            filtered_count = total_jobs_raw - total_jobs_filtered
+            filter_rate = (filtered_count / total_jobs_raw * 100) if total_jobs_raw > 0 else 0
+            print(f"💰 薪资过滤拒绝职位: {filtered_count} 个 ({filter_rate:.1f}%)")
+            print(f"📋 薪资过滤后职位: {total_jobs_filtered}")
+        
+        # 使用过滤后的职位数量
+        all_pending_jobs = all_pending_jobs_filtered
+        total_jobs = total_jobs_filtered
         
         if total_jobs == 0:
-            print("✅ 没有待投递的职位")
+            if salary_filter_enabled and total_jobs_raw > 0:
+                print("⚠️ 所有职位都被薪资过滤拒绝了")
+                print("💡 建议: 降低薪资匹配阈值或检查薪资匹配度计算")
+            else:
+                print("✅ 没有待投递的职位")
             return
         
-        # 5. 显示前几个职位信息
+        # 6. 显示薪资过滤统计
+        if salary_filter_enabled and engine.data_manager.salary_filter:
+            print("\n💰 薪资过滤统计:")
+            filter_stats = engine.data_manager.salary_filter.get_stats()
+            print(f"  总评估数: {filter_stats['total_evaluated']}")
+            print(f"  拒绝数: {filter_stats['salary_rejected']}")
+            print(f"  拒绝率: {filter_stats['rejection_rate']:.2%}")
+            print(f"  增强数: {filter_stats['salary_enhanced']}")
+            
+            # 显示薪资分布
+            distribution = filter_stats['salary_distribution']
+            print(f"  薪资分布:")
+            print(f"    优秀 (≥0.8): {distribution['excellent']} 个")
+            print(f"    良好 (0.6-0.8): {distribution['good']} 个")
+            print(f"    可接受 (0.3-0.6): {distribution['acceptable']} 个")
+            print(f"    较差 (<0.3): {distribution['poor']} 个")
+        
+        # 7. 显示前几个职位信息
         print("\n📋 前5个待投递职位:")
         for i, job in enumerate(all_pending_jobs[:5], 1):
             print(f"  {i}. {job.job_title} @ {job.company} (匹配度: {job.match_score:.2f})")
@@ -93,8 +138,12 @@ async def submit_all_remaining_jobs():
         if total_jobs > 5:
             print(f"  ... 还有 {total_jobs - 5} 个职位")
         
-        # 6. 确认执行
+        # 8. 确认执行
         print(f"\n⚠️ 即将投递 {total_jobs} 个职位")
+        if salary_filter_enabled:
+            print(f"💰 薪资过滤已启用，阈值: {salary_threshold}")
+            print(f"💰 已过滤掉 {total_jobs_raw - total_jobs} 个低薪职位")
+        
         user_input = input("确认继续执行批量投递？(y/N): ").strip().lower()
         
         if user_input != 'y':
@@ -178,7 +227,36 @@ async def submit_all_remaining_jobs():
             avg_time = total_time / total_successful
             print(f"  ⚡ 平均每个成功投递耗时: {avg_time:.2f}秒")
         
-        # 9. 检查失败记录
+        # 9. 显示薪资过滤最终统计
+        if salary_filter_enabled and engine.data_manager.salary_filter:
+            print(f"\n💰 薪资过滤最终统计:")
+            final_filter_stats = engine.data_manager.salary_filter.get_stats()
+            print(f"  📊 过滤效果:")
+            print(f"    原始职位数: {total_jobs_raw}")
+            print(f"    过滤拒绝数: {final_filter_stats['salary_rejected']}")
+            print(f"    实际投递数: {total_jobs}")
+            print(f"    过滤率: {final_filter_stats['rejection_rate']:.2%}")
+            
+            print(f"  📈 薪资质量分布:")
+            distribution = final_filter_stats['salary_distribution']
+            total_evaluated = final_filter_stats['total_evaluated']
+            if total_evaluated > 0:
+                print(f"    优秀薪资 (≥80%): {distribution['excellent']} ({distribution['excellent']/total_evaluated*100:.1f}%)")
+                print(f"    良好薪资 (60-80%): {distribution['good']} ({distribution['good']/total_evaluated*100:.1f}%)")
+                print(f"    可接受薪资 (30-60%): {distribution['acceptable']} ({distribution['acceptable']/total_evaluated*100:.1f}%)")
+                print(f"    较差薪资 (<30%): {distribution['poor']} ({distribution['poor']/total_evaluated*100:.1f}%)")
+            
+            if final_filter_stats['salary_enhanced'] > 0:
+                print(f"  ⭐ 薪资增强处理: {final_filter_stats['salary_enhanced']} 个职位")
+            
+            # 计算薪资过滤的价值
+            if final_filter_stats['salary_rejected'] > 0:
+                avg_time = total_time / total_successful if total_successful > 0 else 30
+                time_saved = final_filter_stats['salary_rejected'] * avg_time
+                print(f"  ⏰ 预估节省时间: {time_saved:.1f}秒 ({time_saved/60:.1f}分钟)")
+                print(f"  💡 薪资过滤避免了 {final_filter_stats['salary_rejected']} 次低价值投递")
+        
+        # 10. 检查失败记录
         print(f"\n🔍 检查失败记录...")
         failed_records = engine.get_failed_submissions(limit=10)
         if failed_records:
@@ -189,6 +267,25 @@ async def submit_all_remaining_jobs():
                 print(f"     原因: {record.get('message', 'N/A')}")
         else:
             print("✅ 没有失败记录")
+        
+        # 11. 薪资过滤建议
+        if salary_filter_enabled and engine.data_manager.salary_filter:
+            final_stats = engine.data_manager.salary_filter.get_stats()
+            rejection_rate = final_stats['rejection_rate']
+            
+            print(f"\n💡 薪资过滤建议:")
+            if rejection_rate > 0.7:
+                print("  ⚠️ 过滤率过高 (>70%)，建议降低薪资阈值")
+                print(f"  💡 当前阈值: {salary_threshold} → 建议: {max(0.1, salary_threshold - 0.1)}")
+            elif rejection_rate < 0.1:
+                print("  📈 过滤率较低 (<10%)，可以考虑提高薪资阈值")
+                print(f"  💡 当前阈值: {salary_threshold} → 建议: {min(0.8, salary_threshold + 0.1)}")
+            else:
+                print("  ✅ 薪资过滤率适中，配置合理")
+            
+            if final_stats['salary_enhanced'] > 0:
+                enhancement_rate = final_stats['salary_enhanced'] / total_jobs * 100
+                print(f"  ⭐ {enhancement_rate:.1f}% 的职位获得薪资增强，优先级得到提升")
         
         print(f"\n✅ 所有剩余职位投递完成!")
         
@@ -208,15 +305,21 @@ async def submit_all_remaining_jobs():
 
 def main():
     """主函数"""
-    print("快速投递所有剩余职位 (增强版)")
+    print("快速投递所有剩余职位 (增强版 + 薪资过滤)")
     print("="*60)
     print("🆕 新功能: 智能状态检测")
     print("  • 自动识别暂停招聘职位并删除")
     print("  • 自动识别已申请职位并标记")
     print("  • 高效页面检测，避免重复DOM查找")
     print("  • 详细日志记录到 logs/ 目录")
+    print("💰 薪资过滤功能:")
+    print("  • 自动过滤薪资匹配度低于阈值的职位")
+    print("  • 支持灵活的阈值配置 (默认0.3)")
+    print("  • 提供详细的过滤统计和建议")
+    print("  • 节省时间，避免低价值投递")
     print("="*60)
     print("⚠️ 注意: 这将投递数据库中所有未处理的职位")
+    print("⚠️ 薪资过滤功能会自动排除低薪职位")
     print("⚠️ 请确保您已经准备好进行大量投递操作")
     print("="*60)
     

@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 from contextlib import contextmanager
 
 from .models import JobMatchRecord, SubmissionResult, SubmissionStatus, JobStatusResult
+from .salary_filter import SalaryFilter, SalaryFilterResult
 from ..database.operations import DatabaseManager
 import json
 
@@ -18,16 +19,20 @@ import json
 class SubmissionDataManager:
     """投递数据管理器"""
     
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, config: Dict[str, Any] = None):
         """
         初始化数据管理器
         
         Args:
             db_path: 数据库文件路径
+            config: 系统配置（用于薪资过滤）
         """
         self.db_path = db_path
         self.db_manager = DatabaseManager(db_path)
         self.logger = logging.getLogger(__name__)
+        
+        # 初始化薪资过滤器
+        self.salary_filter = SalaryFilter(config or {}) if config else None
         
         # 确保投递日志表存在
         self._ensure_submission_log_table()
@@ -67,13 +72,14 @@ class SubmissionDataManager:
         except Exception as e:
             self.logger.error(f"确保投递日志表失败: {e}")
     
-    def get_unprocessed_matches(self, limit: int = 50, priority_filter: Optional[str] = None) -> List[JobMatchRecord]:
+    def get_unprocessed_matches(self, limit: int = 50, priority_filter: Optional[str] = None, apply_salary_filter: bool = True) -> List[JobMatchRecord]:
         """
-        获取未处理的匹配记录
+        获取未处理的匹配记录（支持薪资过滤）
         
         Args:
-            limit: 限制数量
+            limit: 限制数量（薪资过滤后的有效职位数量）
             priority_filter: 优先级过滤 ('high', 'medium', 'low')
+            apply_salary_filter: 是否应用薪资过滤
             
         Returns:
             未处理的职位匹配记录列表
@@ -90,29 +96,57 @@ class SubmissionDataManager:
                     where_conditions.append("rm.priority_level = ?")
                     params.append(priority_filter)
                 
-                where_clause = " AND ".join(where_conditions)
-                params.append(limit)
+                # 如果启用薪资过滤，直接在SQL中添加薪资条件，避免后续过滤遗漏
+                if apply_salary_filter and self.salary_filter:
+                    where_conditions.append("rm.salary_match_score > ?")
+                    params.append(self.salary_filter.config.min_salary_match_score)
+                    self.logger.debug(f"薪资过滤启用，SQL条件: salary_match_score > {self.salary_filter.config.min_salary_match_score}")
                 
-                # 查询未处理的匹配记录，关联jobs表获取URL等信息
+                where_clause = " AND ".join(where_conditions)
+                query_limit = limit
+                
+                # 查询未处理的匹配记录，关联jobs表获取URL等信息，包含薪资匹配度
+                # 按照与人工查询一致的排序：skill_match_score desc
                 sql = f"""
-                    SELECT 
+                    SELECT
                         rm.id, rm.job_id, rm.match_score, rm.priority_level,
-                        rm.processed, rm.created_at,
+                        rm.processed, rm.created_at, rm.salary_match_score, rm.skill_match_score,
                         j.title, j.company, j.url
                     FROM resume_matches rm
                     JOIN jobs j ON rm.job_id = j.job_id
                     WHERE {where_clause}
-                    ORDER BY rm.match_score DESC, rm.created_at ASC
+                    ORDER BY rm.skill_match_score DESC
                     LIMIT ?
                 """
                 
+                params.append(query_limit)
                 cursor.execute(sql, params)
                 rows = cursor.fetchall()
                 
                 records = []
+                
                 for row in rows:
                     row_dict = dict(row)
-                    # 创建JobMatchRecord，使用现有字段
+                    
+                    # 如果在SQL中已经过滤了薪资，这里就不需要再次过滤
+                    # 但仍然可以应用其他过滤逻辑（如分级阈值等）
+                    if apply_salary_filter and self.salary_filter:
+                        # 构建匹配数据用于高级薪资过滤（如分级阈值）
+                        match_data = {
+                            'job_id': row_dict['job_id'],
+                            'job_title': row_dict.get('title', ''),
+                            'salary_match_score': row_dict.get('salary_match_score', 0.0)
+                        }
+                        
+                        salary_result, salary_info = self.salary_filter.evaluate_salary(match_data)
+                        
+                        # 由于SQL已经过滤了基本阈值，这里主要处理增强逻辑
+                        if salary_result == SalaryFilterResult.REJECT:
+                            # 这种情况应该很少发生，因为SQL已经过滤了
+                            self.logger.debug(f"高级薪资过滤拒绝职位: {row_dict['job_id']} - {salary_info.get('reasoning', '')}")
+                            continue
+                    
+                    # 创建JobMatchRecord
                     record = JobMatchRecord(
                         id=row_dict['id'],
                         job_id=row_dict['job_id'],
@@ -124,8 +158,13 @@ class SubmissionDataManager:
                         processed=bool(row_dict.get('processed', 0))
                     )
                     records.append(record)
+                    
+                    # 达到限制数量就停止
+                    if len(records) >= limit:
+                        break
                 
-                self.logger.info(f"获取到 {len(records)} 个未处理的匹配记录")
+                filter_method = "SQL过滤" if apply_salary_filter and self.salary_filter else "无过滤"
+                self.logger.info(f"获取到 {len(records)} 个未处理的匹配记录（{filter_method}）")
                 return records
                 
         except Exception as e:

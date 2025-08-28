@@ -2,6 +2,7 @@
 ChromaDB向量存储管理器
 
 负责职位信息的向量化存储、检索和管理。
+支持时间感知的向量搜索，解决新数据被老数据掩盖的问题。
 """
 
 try:
@@ -17,12 +18,13 @@ except ImportError:
 from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import LLMChainExtractor
 from langchain.schema import Document
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from .llm_factory import create_llm
 import logging
 import os
 import json
-from datetime import datetime
+import numpy as np
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +57,24 @@ class ChromaDBManager:
         # 初始化压缩检索器
         self.compression_retriever = self._init_compression_retriever()
         
+        # 时间感知配置
+        self.time_config = self.config.get('time_aware_search', {})
+        self.fresh_data_boost = self.time_config.get('fresh_data_boost', 0.2)  # 新数据加分
+        self.fresh_data_days = self.time_config.get('fresh_data_days', 7)      # 7天内算新数据
+        self.time_decay_factor = self.time_config.get('time_decay_factor', 0.1) # 时间衰减因子
+        self.enable_time_boost = self.time_config.get('enable_time_boost', True)
+        
         logger.info(f"ChromaDB管理器初始化完成，存储路径: {self.persist_directory}")
+        if self.enable_time_boost:
+            logger.info(f"时间感知功能已启用: 新数据加分={self.fresh_data_boost}, "
+                       f"新数据天数={self.fresh_data_days}, 时间衰减={self.time_decay_factor}")
     
     def _init_embeddings(self) -> HuggingFaceEmbeddings:
         """初始化嵌入模型"""
         embeddings_config = self.config.get('embeddings', {})
         
         model_name = embeddings_config.get(
-            'model_name', 
+            'model_name',
             'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
         )
         
@@ -409,6 +421,265 @@ class ChromaDBManager:
             logger.error(f"备份集合失败: {e}")
             return False
     
+    def time_aware_similarity_search(self,
+                                   query: str,
+                                   k: int = 5,
+                                   filters: Dict = None,
+                                   strategy: str = 'hybrid') -> List[Tuple[Document, float]]:
+        """
+        时间感知的相似度搜索
+        
+        Args:
+            query: 查询文本
+            k: 返回结果数量
+            filters: 过滤条件
+            strategy: 搜索策略 ('hybrid', 'fresh_first', 'balanced')
+            
+        Returns:
+            List[Tuple[Document, float]]: 文档和调整后分数的元组列表
+        """
+        try:
+            if not self.enable_time_boost:
+                # 时间感知功能未启用，使用基础搜索
+                return self.similarity_search_with_score(query=query, k=k, filters=filters)
+            
+            # 1. 执行基础向量搜索，获取更多候选结果
+            # 移除200的硬限制，允许获取7天内的所有数据
+            search_k = k * 3  # 获取3倍结果用于重排序，不限制上限
+            base_results = self.similarity_search_with_score(
+                query=query, k=search_k, filters=filters
+            )
+            
+            if not base_results:
+                logger.warning("基础向量搜索无结果")
+                return []
+            
+            logger.debug(f"基础搜索返回 {len(base_results)} 个结果，开始时间感知重排序")
+            
+            # 2. 应用时间感知重排序
+            if strategy == 'fresh_first':
+                reranked_results = self._fresh_first_rerank(base_results)
+            elif strategy == 'balanced':
+                reranked_results = self._balanced_time_rerank(base_results)
+            else:  # hybrid
+                reranked_results = self._hybrid_time_rerank(base_results)
+            
+            # 3. 返回前k个结果
+            final_results = reranked_results[:k]
+            
+            # 记录时间分布统计
+            self._log_time_distribution(final_results)
+            
+            logger.debug(f"时间感知搜索完成，返回 {len(final_results)} 个结果")
+            return final_results
+            
+        except Exception as e:
+            logger.error(f"时间感知搜索失败: {e}")
+            # 降级到基础搜索
+            return self.similarity_search_with_score(query=query, k=k, filters=filters)
+    
+    def _hybrid_time_rerank(self, results: List[Tuple[Document, float]]) -> List[Tuple[Document, float]]:
+        """混合时间重排序：平衡相似度和时间新旧"""
+        reranked = []
+        current_time = datetime.now()
+        
+        for doc, similarity_score in results:
+            # 计算时间权重
+            time_weight = self._calculate_time_weight(doc, current_time)
+            
+            # 混合分数：70%相似度 + 30%时间权重
+            hybrid_score = similarity_score * 0.7 + time_weight * 0.3
+            
+            # 新数据额外加分
+            if self._is_fresh_data(doc, current_time):
+                hybrid_score += self.fresh_data_boost
+                logger.debug(f"新数据加分: {doc.metadata.get('job_id', 'unknown')} "
+                           f"原分数: {similarity_score:.3f} -> 混合分数: {hybrid_score:.3f}")
+            
+            reranked.append((doc, hybrid_score))
+        
+        # 按混合分数排序
+        reranked.sort(key=lambda x: x[1], reverse=True)
+        return reranked
+    
+    def _fresh_first_rerank(self, results: List[Tuple[Document, float]]) -> List[Tuple[Document, float]]:
+        """新数据优先重排序：优先展示最新数据"""
+        current_time = datetime.now()
+        fresh_results = []
+        old_results = []
+        
+        for doc, similarity_score in results:
+            if self._is_fresh_data(doc, current_time):
+                # 新数据：保持原有相似度分数并加分
+                boosted_score = similarity_score + self.fresh_data_boost
+                fresh_results.append((doc, boosted_score))
+            else:
+                # 老数据：应用时间衰减
+                time_weight = self._calculate_time_weight(doc, current_time)
+                decayed_score = similarity_score * (1 - self.time_decay_factor) + time_weight * self.time_decay_factor
+                old_results.append((doc, decayed_score))
+        
+        # 分别排序
+        fresh_results.sort(key=lambda x: x[1], reverse=True)
+        old_results.sort(key=lambda x: x[1], reverse=True)
+        
+        # 新数据在前，老数据在后
+        logger.debug(f"新数据优先排序: 新数据 {len(fresh_results)} 个，老数据 {len(old_results)} 个")
+        return fresh_results + old_results
+    
+    def _balanced_time_rerank(self, results: List[Tuple[Document, float]]) -> List[Tuple[Document, float]]:
+        """平衡时间重排序：确保新老数据都有机会"""
+        current_time = datetime.now()
+        reranked = []
+        
+        for doc, similarity_score in results:
+            # 计算时间权重
+            time_weight = self._calculate_time_weight(doc, current_time)
+            
+            # 平衡分数：50%相似度 + 50%时间权重
+            balanced_score = similarity_score * 0.5 + time_weight * 0.5
+            
+            reranked.append((doc, balanced_score))
+        
+        # 按平衡分数排序
+        reranked.sort(key=lambda x: x[1], reverse=True)
+        return reranked
+    
+    def _calculate_time_weight(self, doc: Document, current_time: datetime) -> float:
+        """计算时间权重"""
+        try:
+            created_at_str = doc.metadata.get('created_at')
+            if not created_at_str:
+                return 0.5  # 没有时间信息，给中等权重
+            
+            # 解析时间戳
+            created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=current_time.tzinfo)
+            
+            # 计算时间差（天数）
+            time_diff = (current_time - created_at).total_seconds() / (24 * 3600)
+            
+            # 时间权重计算：越新权重越高
+            if time_diff <= 0:
+                return 1.0  # 未来时间或当天，最高权重
+            elif time_diff <= self.fresh_data_days:
+                # 新数据：线性衰减
+                return 1.0 - (time_diff / self.fresh_data_days) * 0.3  # 0.7-1.0
+            elif time_diff <= 30:
+                # 中等数据：缓慢衰减
+                return 0.7 - ((time_diff - self.fresh_data_days) / (30 - self.fresh_data_days)) * 0.3  # 0.4-0.7
+            else:
+                # 老数据：指数衰减
+                decay_factor = min(time_diff / 365, 2.0)  # 最多2年衰减
+                return max(0.1, 0.4 * np.exp(-decay_factor * 0.5))  # 0.1-0.4
+                
+        except Exception as e:
+            logger.warning(f"计算时间权重失败: {e}")
+            return 0.5
+    
+    def _is_fresh_data(self, doc: Document, current_time: datetime) -> bool:
+        """判断是否为新数据"""
+        try:
+            created_at_str = doc.metadata.get('created_at')
+            if not created_at_str:
+                return False
+            
+            created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=current_time.tzinfo)
+            
+            time_diff = (current_time - created_at).total_seconds() / (24 * 3600)
+            return time_diff <= self.fresh_data_days
+            
+        except Exception as e:
+            logger.warning(f"判断新数据失败: {e}")
+            return False
+    
+    def _log_time_distribution(self, results: List[Tuple[Document, float]]):
+        """记录时间分布统计"""
+        if not results:
+            return
+        
+        try:
+            # 计算7天前的时间戳
+            current_time = datetime.now()
+            cutoff_time = current_time - timedelta(days=7)
+            cutoff_str = cutoff_time.isoformat()
+            
+            # 查询数据库中7天内的所有数据
+            collection = self.vectorstore._collection
+            
+            # 获取所有文档的元数据
+            all_data = collection.get(include=['metadatas'])
+            
+            within_7days_count = 0
+            if all_data and all_data['metadatas']:
+                for metadata in all_data['metadatas']:
+                    try:
+                        created_at_str = metadata.get('created_at')
+                        if not created_at_str:
+                            continue
+                        
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                        if created_at.tzinfo is None:
+                            created_at = created_at.replace(tzinfo=current_time.tzinfo)
+                        
+                        # 如果是7天内的数据，计数
+                        if created_at >= cutoff_time:
+                            within_7days_count += 1
+                            
+                    except Exception:
+                        continue
+            
+            logger.info(f"时间分布统计: 7天内全部数据 {within_7days_count}个")
+            
+        except Exception as e:
+            logger.warning(f"统计7天内数据失败: {e}")
+            # 降级到原来的方法，只统计搜索结果中的数据
+            within_7days_count = 0
+            current_time = datetime.now()
+            
+            for doc, _ in results:
+                try:
+                    created_at_str = doc.metadata.get('created_at')
+                    if not created_at_str:
+                        continue
+                    
+                    created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                    if created_at.tzinfo is None:
+                        created_at = created_at.replace(tzinfo=current_time.tzinfo)
+                    
+                    time_diff = (current_time - created_at).total_seconds() / (24 * 3600)
+                    
+                    if time_diff <= 7:
+                        within_7days_count += 1
+                        
+                except Exception:
+                    continue
+            
+            logger.info(f"时间分布统计: 7天内全部数据 {within_7days_count}个 (基于搜索结果)")
+    
+    def get_recent_documents(self, days: int = 7, k: int = 50) -> List[Document]:
+        """获取最近的文档"""
+        try:
+            # 计算时间过滤条件
+            cutoff_time = datetime.now() - timedelta(days=days)
+            cutoff_str = cutoff_time.isoformat()
+            
+            # 使用时间过滤
+            filters = {"created_at": {"$gte": cutoff_str}}
+            
+            # 执行搜索（使用通用查询）
+            results = self.similarity_search("最新职位信息", k=k, filters=filters)
+            
+            logger.info(f"获取到 {len(results)} 个最近 {days} 天的文档")
+            return results
+            
+        except Exception as e:
+            logger.error(f"获取最近文档失败: {e}")
+            return []
+
     def close(self):
         """关闭连接并清理资源"""
         try:
