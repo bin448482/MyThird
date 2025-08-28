@@ -63,7 +63,10 @@ class MasterController:
         
         # 初始化向量管理器（从RAG协调器获取）
         vector_manager = self.rag_coordinator.vector_manager
-        self.resume_matcher = GenericResumeJobMatcher(vector_manager, config)
+        
+        # 使用与 batch_rematch_jobs.py 一致的匹配器配置
+        matcher_config = self._get_consistent_matcher_config(config)
+        self.resume_matcher = GenericResumeJobMatcher(vector_manager, matcher_config)
         
         self.decision_engine = DecisionEngine(config)
         self.submission_integration = SubmissionIntegration(config)
@@ -79,6 +82,13 @@ class MasterController:
             'stage_timings': {}
         }
     
+    def _get_consistent_matcher_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """获取与 batch_rematch_jobs.py 一致的匹配器配置 - 直接传递完整配置"""
+        logger.info("🔄 MasterController 使用与 batch_rematch_jobs.py 相同的配置源")
+        # 直接传递完整的配置，让 GenericResumeJobMatcher 自己解析
+        # 这样确保与 batch_rematch_jobs.py 使用完全相同的配置逻辑
+        return config
+    
     async def run_full_pipeline(self, pipeline_config: PipelineConfig) -> ExecutionReport:
         """执行完整的端到端流水线"""
         start_time = datetime.now()
@@ -89,19 +99,6 @@ class MasterController:
             logger.info("开始阶段1: 职位提取")
             self.current_stage = "job_extraction"
             extraction_result = await self._execute_job_extraction(pipeline_config)
-            
-            # 打印提取的内容进行调试
-            logger.info(f"=== 职位提取结果调试 ===")
-            logger.info(f"提取成功: {extraction_result.get('success', False)}")
-            logger.info(f"提取数量: {extraction_result.get('total_extracted', 0)}")
-            logger.info(f"关键词处理数量: {extraction_result.get('keywords_processed', 0)}")
-            
-            if extraction_result.get('jobs'):
-                logger.info(f"前5条职位详情:")
-                for i, job in enumerate(extraction_result['jobs'][:5]):
-                    logger.info(f"职位 {i+1}: {job}")
-            else:
-                logger.warning("没有提取到任何职位数据")
             
             if not extraction_result['success']:
                 raise PipelineError(f"职位提取失败: {extraction_result.get('error', 'Unknown error')}")
@@ -122,13 +119,21 @@ class MasterController:
             if not matching_result['success']:
                 raise PipelineError(f"简历匹配失败: {matching_result.get('error', 'Unknown error')}")
             
-            # 阶段4: 简历投递
+            # 阶段4: 简历投递 - 注释掉用于测试
             logger.info("开始阶段4: 简历投递")
             self.current_stage = "resume_submission"
             submission_result = self._execute_resume_submission(pipeline_config.submission_config)
             
-            if not submission_result['success']:
-                logger.warning(f"简历投递失败: {submission_result.get('error', 'Unknown error')}")
+            # 模拟投递结果
+            # submission_result = {
+            #     'success': True,
+            #     'total_processed': 0,
+            #     'successful_submissions': 0,
+            #     'failed_submissions': 0,
+            #     'skipped_submissions': 0,
+            #     'submission_details': [],
+            #     'processing_time': 0
+            # }
             
             # 创建决策结果用于兼容性
             decision_result = {'success': True, 'recommended_submissions': 0}
@@ -363,10 +368,11 @@ class MasterController:
             else:
                 resume_profile_obj = resume_profile
             
-            # 执行简历匹配
+            # 执行简历匹配 - 使用更大的 top_k 值以匹配更多职位
+            # 与 batch_rematch_jobs.py 保持一致，处理所有可能的匹配
             matching_result = await self.resume_matcher.find_matching_jobs(
                 resume_profile=resume_profile_obj,
-                top_k=50
+                top_k=1000  # 增加到1000，确保能处理所有职位
             )
             
             # 保存匹配结果到数据库
@@ -464,13 +470,13 @@ class MasterController:
                     'resume_profile_id': resume_profile_id,
                     'match_score': match.overall_score,
                     'priority_level': priority_level,
-                    'semantic_score': getattr(match, 'semantic_score', None),
-                    'skill_match_score': getattr(match.dimension_scores, 'skills_match', None) if hasattr(match, 'dimension_scores') else None,
-                    'experience_match_score': getattr(match.dimension_scores, 'experience_match', None) if hasattr(match, 'dimension_scores') else None,
-                    'location_match_score': getattr(match.dimension_scores, 'location_match', None) if hasattr(match, 'dimension_scores') else None,
-                    'salary_match_score': getattr(match.dimension_scores, 'salary_match', None) if hasattr(match, 'dimension_scores') else None,
-                    'match_details': str(getattr(match, 'match_analysis', {})),
-                    'match_reasons': ', '.join(getattr(match.match_analysis, 'strengths', []) if hasattr(match, 'match_analysis') else [])
+                    'semantic_score': match.dimension_scores.get('semantic_similarity', 0) if hasattr(match, 'dimension_scores') else None,
+                    'skill_match_score': match.dimension_scores.get('skills_match', 0) if hasattr(match, 'dimension_scores') else None,
+                    'experience_match_score': match.dimension_scores.get('experience_match', 0) if hasattr(match, 'dimension_scores') else None,
+                    'location_match_score': match.dimension_scores.get('industry_match', 0) if hasattr(match, 'dimension_scores') else None,
+                    'salary_match_score': match.dimension_scores.get('salary_match', 0) if hasattr(match, 'dimension_scores') else None,
+                    'match_details': str(match.dimension_scores) if hasattr(match, 'dimension_scores') else '{}',
+                    'match_reasons': f"MasterController匹配: {match.job_title} at {match.company}" if hasattr(match, 'job_title') and hasattr(match, 'company') else f"职位ID: {match.job_id}"
                 }
                 match_records.append(match_data)
             
