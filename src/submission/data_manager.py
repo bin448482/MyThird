@@ -72,12 +72,12 @@ class SubmissionDataManager:
         except Exception as e:
             self.logger.error(f"确保投递日志表失败: {e}")
     
-    def get_unprocessed_matches(self, limit: int = 50, priority_filter: Optional[str] = None, apply_salary_filter: bool = True) -> List[JobMatchRecord]:
+    def get_unprocessed_matches(self, limit: Optional[int] = 50, priority_filter: Optional[str] = None, apply_salary_filter: bool = True) -> List[JobMatchRecord]:
         """
         获取未处理的匹配记录（支持薪资过滤）
         
         Args:
-            limit: 限制数量（薪资过滤后的有效职位数量）
+            limit: 限制数量，None表示获取所有记录
             priority_filter: 优先级过滤 ('high', 'medium', 'low')
             apply_salary_filter: 是否应用薪资过滤
             
@@ -103,24 +103,37 @@ class SubmissionDataManager:
                     self.logger.debug(f"薪资过滤启用，SQL条件: salary_match_score > {self.salary_filter.config.min_salary_match_score}")
                 
                 where_clause = " AND ".join(where_conditions)
-                query_limit = limit
                 
                 # 查询未处理的匹配记录，关联jobs表获取URL等信息，包含薪资匹配度
                 # 过滤掉已删除的职位，按照与人工查询一致的排序：skill_match_score desc
-                sql = f"""
-                    SELECT
-                        rm.id, rm.job_id, rm.match_score, rm.priority_level,
-                        rm.processed, rm.created_at, rm.salary_match_score, rm.skill_match_score,
-                        j.title, j.company, j.url
-                    FROM resume_matches rm
-                    JOIN jobs j ON rm.job_id = j.job_id
-                    WHERE {where_clause} AND (j.is_deleted = 0 OR j.is_deleted IS NULL)
-                    ORDER BY rm.skill_match_score DESC
-                    LIMIT ?
-                """
-                
-                params.append(query_limit)
-                cursor.execute(sql, params)
+                if limit is None:
+                    # 获取所有记录，不限制数量
+                    sql = f"""
+                        SELECT
+                            rm.id, rm.job_id, rm.match_score, rm.priority_level,
+                            rm.processed, rm.created_at, rm.salary_match_score, rm.skill_match_score,
+                            j.title, j.company, j.url
+                        FROM resume_matches rm
+                        JOIN jobs j ON rm.job_id = j.job_id
+                        WHERE {where_clause} AND (j.is_deleted = 0 OR j.is_deleted IS NULL)
+                        ORDER BY rm.skill_match_score DESC
+                    """
+                    cursor.execute(sql, params)
+                else:
+                    # 限制数量
+                    sql = f"""
+                        SELECT
+                            rm.id, rm.job_id, rm.match_score, rm.priority_level,
+                            rm.processed, rm.created_at, rm.salary_match_score, rm.skill_match_score,
+                            j.title, j.company, j.url
+                        FROM resume_matches rm
+                        JOIN jobs j ON rm.job_id = j.job_id
+                        WHERE {where_clause} AND (j.is_deleted = 0 OR j.is_deleted IS NULL)
+                        ORDER BY rm.skill_match_score DESC
+                        LIMIT ?
+                    """
+                    params.append(limit)
+                    cursor.execute(sql, params)
                 rows = cursor.fetchall()
                 
                 records = []
@@ -159,8 +172,8 @@ class SubmissionDataManager:
                     )
                     records.append(record)
                     
-                    # 达到限制数量就停止
-                    if len(records) >= limit:
+                    # 达到限制数量就停止（只有当limit不为None时才检查）
+                    if limit is not None and len(records) >= limit:
                         break
                 
                 filter_method = "SQL过滤" if apply_salary_filter and self.salary_filter else "无过滤"

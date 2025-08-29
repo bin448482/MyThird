@@ -283,62 +283,75 @@ class ResumeSubmissionEngine:
         try:
             self.logger.info(f"🎯 开始批量投递（同步），批次大小: {batch_size}")
             
-            # 1. 获取待投递的职位（移除每日限制检查）
-            pending_jobs = self.data_manager.get_unprocessed_matches(
-                limit=batch_size
+            # 1. 获取所有待投递的职位（不限制数量）
+            all_pending_jobs = self.data_manager.get_unprocessed_matches(
+                limit=None  # 获取所有未处理的记录
             )
             
-            if not pending_jobs:
+            if not all_pending_jobs:
                 self.logger.info("没有待投递的职位")
                 self.current_report.finalize()
                 return self.current_report
             
-            self.logger.info(f"获取到 {len(pending_jobs)} 个待投递职位")
+            self.logger.info(f"获取到 {len(all_pending_jobs)} 个待投递职位，将分 {(len(all_pending_jobs) + batch_size - 1) // batch_size} 批处理")
             
-            # 3. 逐个处理职位
-            for i, job_record in enumerate(pending_jobs):
-                try:
-                    # 检查是否需要批次延迟
-                    self.anti_crawler.apply_batch_delay(10, i)
-                    
-                    # 投递单个职位（同步版本）
-                    result = self.submit_single_job_sync(job_record)
-                    self.current_report.add_result(result)
-                    
-                    # 更新数据库
-                    self.data_manager.update_submission_result(result)
-                    
-                    # 移除每日计数增加（保留注释以备将来需要）
-                    # if result.status == SubmissionStatus.SUCCESS:
-                    #     self.anti_crawler.increment_daily_count()
-                    
-                    # 应用延迟
-                    self.anti_crawler.apply_delay()
-                    
-                    # 风险检查和缓解
-                    # if i > 0 and i % 5 == 0:  # 每5个职位检查一次
-                    #     risk_assessment = self.anti_crawler.check_detection_risk()
-                    #     if risk_assessment['risk_level'] != 'low':
-                    #         self.anti_crawler.apply_risk_mitigation(risk_assessment)
-                    
-                except Exception as e:
-                    self.logger.error(f"处理职位 {job_record.job_id} 失败: {e}")
-                    
-                    # 创建失败结果
-                    error_result = SubmissionResult(
-                        job_id=job_record.job_id,
-                        match_id=job_record.id,
-                        job_title=job_record.job_title,
-                        company=job_record.company,
-                        job_url=job_record.job_url,
-                        status=SubmissionStatus.FAILED,
-                        message="处理异常",
-                        error_details=str(e)
-                    )
-                    
-                    self.current_report.add_result(error_result)
-                    self.data_manager.update_submission_result(error_result)
-                    continue
+            # 2. 按batch_size分批处理
+            for batch_num in range(0, len(all_pending_jobs), batch_size):
+                batch_end = min(batch_num + batch_size, len(all_pending_jobs))
+                current_batch = all_pending_jobs[batch_num:batch_end]
+                batch_index = batch_num // batch_size + 1
+                
+                self.logger.info(f"📦 处理第 {batch_index} 批，职位 {batch_num + 1}-{batch_end}/{len(all_pending_jobs)}")
+                
+                # 3. 处理当前批次的职位
+                for i, job_record in enumerate(current_batch):
+                    try:
+                        # 检查是否需要批次延迟
+                        self.anti_crawler.apply_batch_delay(batch_size, i)
+                        
+                        # 投递单个职位（同步版本）
+                        result = self.submit_single_job_sync(job_record)
+                        self.current_report.add_result(result)
+                        
+                        # 更新数据库
+                        self.data_manager.update_submission_result(result)
+                        
+                        # 移除每日计数增加（保留注释以备将来需要）
+                        # if result.status == SubmissionStatus.SUCCESS:
+                        #     self.anti_crawler.increment_daily_count()
+                        
+                        # 应用延迟
+                        self.anti_crawler.apply_delay()
+                        
+                        # 风险检查和缓解
+                        # if i > 0 and i % 5 == 0:  # 每5个职位检查一次
+                        #     risk_assessment = self.anti_crawler.check_detection_risk()
+                        #     if risk_assessment['risk_level'] != 'low':
+                        #         self.anti_crawler.apply_risk_mitigation(risk_assessment)
+                        
+                    except Exception as e:
+                        self.logger.error(f"处理职位 {job_record.job_id} 失败: {e}")
+                        
+                        # 创建失败结果
+                        error_result = SubmissionResult(
+                            job_id=job_record.job_id,
+                            match_id=job_record.id,
+                            job_title=job_record.job_title,
+                            company=job_record.company,
+                            job_url=job_record.job_url,
+                            status=SubmissionStatus.FAILED,
+                            message="处理异常",
+                            error_details=str(e)
+                        )
+                        
+                        self.current_report.add_result(error_result)
+                        self.data_manager.update_submission_result(error_result)
+                        continue
+                
+                # 4. 批次间延迟（如果还有下一批）
+                if batch_end < len(all_pending_jobs):
+                    self.logger.info(f"📦 第 {batch_index} 批处理完成，等待 {self.submission_config.batch_interval} 秒后处理下一批")
+                    time.sleep(self.submission_config.batch_interval)
             
             # 4. 完成报告
             self.current_report.finalize()
@@ -377,62 +390,75 @@ class ResumeSubmissionEngine:
         try:
             self.logger.info(f"🎯 开始批量投递，批次大小: {batch_size}")
             
-            # 1. 获取待投递的职位（移除每日限制检查）
-            pending_jobs = self.data_manager.get_unprocessed_matches(
-                limit=batch_size
+            # 1. 获取所有待投递的职位（不限制数量）
+            all_pending_jobs = self.data_manager.get_unprocessed_matches(
+                limit=None  # 获取所有未处理的记录
             )
             
-            if not pending_jobs:
+            if not all_pending_jobs:
                 self.logger.info("没有待投递的职位")
                 self.current_report.finalize()
                 return self.current_report
             
-            self.logger.info(f"获取到 {len(pending_jobs)} 个待投递职位")
+            self.logger.info(f"获取到 {len(all_pending_jobs)} 个待投递职位，将分 {(len(all_pending_jobs) + batch_size - 1) // batch_size} 批处理")
             
-            # 3. 逐个处理职位
-            for i, job_record in enumerate(pending_jobs):
-                try:
-                    # 检查是否需要批次延迟
-                    self.anti_crawler.apply_batch_delay(10, i)
-                    
-                    # 投递单个职位
-                    result = await self.submit_single_job(job_record)
-                    self.current_report.add_result(result)
-                    
-                    # 更新数据库
-                    self.data_manager.update_submission_result(result)
-                    
-                    # 移除每日计数增加（保留注释以备将来需要）
-                    # if result.status == SubmissionStatus.SUCCESS:
-                    #     self.anti_crawler.increment_daily_count()
-                    
-                    # 应用延迟
-                    self.anti_crawler.apply_delay()
-                    
-                    # 风险检查和缓解
-                    # if i > 0 and i % 5 == 0:  # 每5个职位检查一次
-                    #     risk_assessment = self.anti_crawler.check_detection_risk()
-                    #     if risk_assessment['risk_level'] != 'low':
-                    #         self.anti_crawler.apply_risk_mitigation(risk_assessment)
-                    
-                except Exception as e:
-                    self.logger.error(f"处理职位 {job_record.job_id} 失败: {e}")
-                    
-                    # 创建失败结果
-                    error_result = SubmissionResult(
-                        job_id=job_record.job_id,
-                        match_id=job_record.id,
-                        job_title=job_record.job_title,
-                        company=job_record.company,
-                        job_url=job_record.job_url,
-                        status=SubmissionStatus.FAILED,
-                        message="处理异常",
-                        error_details=str(e)
-                    )
-                    
-                    self.current_report.add_result(error_result)
-                    self.data_manager.update_submission_result(error_result)
-                    continue
+            # 2. 按batch_size分批处理
+            for batch_num in range(0, len(all_pending_jobs), batch_size):
+                batch_end = min(batch_num + batch_size, len(all_pending_jobs))
+                current_batch = all_pending_jobs[batch_num:batch_end]
+                batch_index = batch_num // batch_size + 1
+                
+                self.logger.info(f"📦 处理第 {batch_index} 批，职位 {batch_num + 1}-{batch_end}/{len(all_pending_jobs)}")
+                
+                # 3. 处理当前批次的职位
+                for i, job_record in enumerate(current_batch):
+                    try:
+                        # 检查是否需要批次延迟
+                        self.anti_crawler.apply_batch_delay(batch_size, i)
+                        
+                        # 投递单个职位
+                        result = await self.submit_single_job(job_record)
+                        self.current_report.add_result(result)
+                        
+                        # 更新数据库
+                        self.data_manager.update_submission_result(result)
+                        
+                        # 移除每日计数增加（保留注释以备将来需要）
+                        # if result.status == SubmissionStatus.SUCCESS:
+                        #     self.anti_crawler.increment_daily_count()
+                        
+                        # 应用延迟
+                        self.anti_crawler.apply_delay()
+                        
+                        # 风险检查和缓解
+                        # if i > 0 and i % 5 == 0:  # 每5个职位检查一次
+                        #     risk_assessment = self.anti_crawler.check_detection_risk()
+                        #     if risk_assessment['risk_level'] != 'low':
+                        #         self.anti_crawler.apply_risk_mitigation(risk_assessment)
+                        
+                    except Exception as e:
+                        self.logger.error(f"处理职位 {job_record.job_id} 失败: {e}")
+                        
+                        # 创建失败结果
+                        error_result = SubmissionResult(
+                            job_id=job_record.job_id,
+                            match_id=job_record.id,
+                            job_title=job_record.job_title,
+                            company=job_record.company,
+                            job_url=job_record.job_url,
+                            status=SubmissionStatus.FAILED,
+                            message="处理异常",
+                            error_details=str(e)
+                        )
+                        
+                        self.current_report.add_result(error_result)
+                        self.data_manager.update_submission_result(error_result)
+                        continue
+                
+                # 4. 批次间延迟（如果还有下一批）
+                if batch_end < len(all_pending_jobs):
+                    self.logger.info(f"📦 第 {batch_index} 批处理完成，等待 {self.submission_config.batch_interval} 秒后处理下一批")
+                    await asyncio.sleep(self.submission_config.batch_interval)
             
             # 4. 完成报告
             self.current_report.finalize()
