@@ -189,8 +189,8 @@ class JobMatchRecord:
 @dataclass
 class SubmissionConfig:
     """投递配置"""
-    batch_size: int = 50  # 增加默认批次大小到50
-    max_daily_submissions: int = 50
+    batch_size: int = 50  # 默认批次大小
+    # max_daily_submissions: int = 50  # 已移除每日投递限制，改用薪资匹配过滤
     submission_delay_range: List[float] = field(default_factory=lambda: [3.0, 8.0])
     max_retries: int = 3
     retry_delay: int = 10

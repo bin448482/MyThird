@@ -569,7 +569,7 @@ class PageParser:
     
     def navigate_to_next_page(self, driver: webdriver.Chrome) -> bool:
         """
-        导航到下一页 - 增强版AJAX检测
+        导航到下一页 - 增强版AJAX检测和重试恢复机制
         
         Args:
             driver: WebDriver实例
@@ -580,10 +580,48 @@ class PageParser:
         try:
             self.logger.info("🔄 尝试导航到下一页")
             
+            # 获取当前页码信息
+            current_page_info = self.get_current_page_info(driver)
+            current_page_number = current_page_info.get('current_page', 1)
+            target_page_number = current_page_number + 1
+            
+            self.logger.info(f"📄 当前页码: {current_page_number}, 目标页码: {target_page_number}")
+            
             # 记录当前页面状态用于验证
             current_url = driver.current_url
             current_page_signature = self._get_page_content_signature(driver)
             
+            # 第一次尝试：标准下一页导航
+            if self._attempt_next_page_click(driver, current_url, current_page_signature):
+                self.logger.info("✅ 标准下一页导航成功")
+                return True
+            
+            # 第二次尝试：刷新页面并恢复到目标页码
+            self.logger.warning("⚠️ 标准下一页导航失败，尝试刷新页面恢复")
+            if self._recover_to_target_page(driver, target_page_number):
+                self.logger.info("✅ 页面刷新恢复成功")
+                return True
+            
+            self.logger.error("❌ 所有导航尝试都失败")
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"❌ 导航到下一页失败: {e}")
+            return False
+    
+    def _attempt_next_page_click(self, driver: webdriver.Chrome, current_url: str, current_page_signature: str) -> bool:
+        """
+        尝试点击下一页按钮
+        
+        Args:
+            driver: WebDriver实例
+            current_url: 当前URL
+            current_page_signature: 当前页面签名
+            
+        Returns:
+            是否成功
+        """
+        try:
             # 尝试多种下一页按钮选择器
             next_page_selectors = [
                 'button.btn-next',      # 51job主要选择器
@@ -618,14 +656,218 @@ class PageParser:
                 except NoSuchElementException:
                     continue
                 except Exception as e:
-                    self.logger.warning(f"点击下一页按钮失败 {selector}: {e}")
+                    self.logger.debug(f"点击下一页按钮失败 {selector}: {e}")
                     continue
             
             self.logger.warning("⚠️ 未找到可用的下一页按钮")
             return False
             
         except Exception as e:
-            self.logger.error(f"❌ 导航到下一页失败: {e}")
+            self.logger.error(f"尝试点击下一页失败: {e}")
+            return False
+    
+    def _recover_to_target_page(self, driver: webdriver.Chrome, target_page_number: int) -> bool:
+        """
+        刷新页面并恢复到目标页码
+        
+        Args:
+            driver: WebDriver实例
+            target_page_number: 目标页码
+            
+        Returns:
+            是否成功恢复
+        """
+        try:
+            self.logger.info(f"🔄 开始页面恢复流程，目标页码: {target_page_number}")
+            
+            # 刷新页面（回到第1页）
+            self.logger.info("🔄 刷新页面...")
+            driver.refresh()
+            
+            # 等待页面加载
+            time.sleep(3)
+            
+            # 验证是否回到第1页
+            page_info = self.get_current_page_info(driver)
+            current_page = page_info.get('current_page', 1)
+            self.logger.info(f"📄 刷新后当前页码: {current_page}")
+            
+            # 如果目标页码是1，直接返回成功
+            if target_page_number <= 1:
+                self.logger.info("✅ 目标页码为1，恢复完成")
+                return True
+            
+            # 逐页导航到目标页码
+            return self._navigate_to_specific_page(driver, target_page_number)
+            
+        except Exception as e:
+            self.logger.error(f"页面恢复失败: {e}")
+            return False
+    
+    def _navigate_to_specific_page(self, driver: webdriver.Chrome, target_page: int) -> bool:
+        """
+        导航到指定页码
+        
+        Args:
+            driver: WebDriver实例
+            target_page: 目标页码
+            
+        Returns:
+            是否成功导航
+        """
+        try:
+            self.logger.info(f"🎯 开始导航到第 {target_page} 页")
+            
+            # 获取当前页码
+            current_page_info = self.get_current_page_info(driver)
+            current_page = current_page_info.get('current_page', 1)
+            
+            # 如果已经在目标页，直接返回成功
+            if current_page == target_page:
+                self.logger.info(f"✅ 已在目标页 {target_page}")
+                return True
+            
+            # 尝试直接点击页码按钮
+            if self._try_direct_page_click(driver, target_page):
+                self.logger.info(f"✅ 直接点击页码 {target_page} 成功")
+                return True
+            
+            # 如果直接点击失败，逐页导航
+            self.logger.info(f"🔄 开始逐页导航从第 {current_page} 页到第 {target_page} 页")
+            
+            for step in range(current_page, target_page):
+                self.logger.info(f"📄 导航到第 {step + 1} 页...")
+                
+                # 尝试点击下一页
+                if not self._attempt_single_next_page_click(driver):
+                    self.logger.error(f"❌ 导航到第 {step + 1} 页失败")
+                    return False
+                
+                # 验证页码
+                time.sleep(2)  # 等待页面加载
+                page_info = self.get_current_page_info(driver)
+                actual_page = page_info.get('current_page', 1)
+                
+                if actual_page != step + 1:
+                    self.logger.error(f"❌ 页码验证失败，期望第 {step + 1} 页，实际第 {actual_page} 页")
+                    return False
+                
+                self.logger.info(f"✅ 成功到达第 {actual_page} 页")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"导航到指定页码失败: {e}")
+            return False
+    
+    def _try_direct_page_click(self, driver: webdriver.Chrome, target_page: int) -> bool:
+        """
+        尝试直接点击页码按钮
+        
+        Args:
+            driver: WebDriver实例
+            target_page: 目标页码
+            
+        Returns:
+            是否成功
+        """
+        try:
+            # 尝试多种页码选择器
+            page_selectors = [
+                f'a[href*="page={target_page}"]',  # 包含page参数的链接
+                f'a[href*="p={target_page}"]',     # 包含p参数的链接
+                f'.pagination a:contains("{target_page}")',  # 分页器中的页码
+                f'.page-item a:contains("{target_page}")',   # Bootstrap样式页码
+                f'a:contains("{target_page}")'     # 任何包含页码的链接
+            ]
+            
+            for selector in page_selectors:
+                try:
+                    # 使用JavaScript查找包含目标页码的元素
+                    page_element = driver.execute_script(f"""
+                        var elements = document.querySelectorAll('a');
+                        for (var i = 0; i < elements.length; i++) {{
+                            var element = elements[i];
+                            if (element.textContent && element.textContent.trim() === '{target_page}') {{
+                                return element;
+                            }}
+                        }}
+                        return null;
+                    """)
+                    
+                    if page_element:
+                        self.logger.info(f"找到页码 {target_page} 的直接链接")
+                        
+                        # 滚动到元素位置
+                        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", page_element)
+                        time.sleep(0.5)
+                        
+                        # 点击页码
+                        page_element.click()
+                        time.sleep(2)
+                        
+                        # 验证是否成功
+                        page_info = self.get_current_page_info(driver)
+                        actual_page = page_info.get('current_page', 1)
+                        
+                        if actual_page == target_page:
+                            return True
+                    
+                except Exception as e:
+                    self.logger.debug(f"直接页码点击失败 {selector}: {e}")
+                    continue
+            
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"尝试直接页码点击失败: {e}")
+            return False
+    
+    def _attempt_single_next_page_click(self, driver: webdriver.Chrome) -> bool:
+        """
+        尝试单次下一页点击（用于逐页导航）
+        
+        Args:
+            driver: WebDriver实例
+            
+        Returns:
+            是否成功
+        """
+        try:
+            next_page_selectors = [
+                'button.btn-next',
+                '.btn-next',
+                '.next',
+                '.page-next'
+            ]
+            
+            for selector in next_page_selectors:
+                try:
+                    next_button = driver.find_element(By.CSS_SELECTOR, selector)
+                    
+                    if next_button.is_enabled() and next_button.is_displayed():
+                        classes = next_button.get_attribute('class') or ''
+                        disabled_attr = next_button.get_attribute('disabled')
+                        
+                        if 'disabled' not in classes.lower() and not disabled_attr:
+                            # 滚动到按钮位置
+                            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", next_button)
+                            time.sleep(0.3)
+                            
+                            # 点击按钮
+                            ActionChains(driver).click(next_button).perform()
+                            return True
+                    
+                except NoSuchElementException:
+                    continue
+                except Exception as e:
+                    self.logger.debug(f"单次下一页点击失败 {selector}: {e}")
+                    continue
+            
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"单次下一页点击失败: {e}")
             return False
     
     def _get_page_content_signature(self, driver: webdriver.Chrome) -> str:

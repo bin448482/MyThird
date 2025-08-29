@@ -306,6 +306,32 @@ rag_system:
     collection_name: job_positions
     persist_directory: ./data/test_chroma_db
     
+    # 嵌入模型配置 - 中文语义优化
+    embeddings:
+      chinese_optimized: true              # 启用中文优化
+      performance_level: "balanced"        # 性能级别: high/balanced/fast
+      model_name: ""                      # 留空自动选择最佳中文模型
+      device: "cpu"                       # 设备: cpu/cuda
+      normalize_embeddings: true          # 标准化嵌入向量
+      batch_size: 32                     # 批处理大小
+      show_progress_bar: false           # 显示进度条
+      trust_remote_code: true            # 信任远程代码
+      
+      # 推荐的中文模型（按优先级）
+      recommended_models:
+        high_performance:
+          - "GanymedeNil/text2vec-large-chinese"
+          - "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+          - "moka-ai/m3e-base"
+        balanced:
+          - "shibing624/text2vec-base-chinese"
+          - "moka-ai/m3e-base"
+          - "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+        fast:
+          - "shibing624/text2vec-base-chinese"
+          - "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+          - "sentence-transformers/all-MiniLM-L6-v2"
+    
     # 时间感知向量搜索配置
     time_aware_search:
       enable_time_boost: true           # 启用时间感知功能
@@ -403,9 +429,9 @@ resume_processing:
 
 # 简历匹配配置 - 针对20年经验资深人士优化 (已优化解决qc_167002415匹配问题)
 resume_matching_advanced:
-  # 搜索范围配置 - 增加搜索范围以匹配更多职位
-  default_search_k: 3000      # 语义搜索返回的候选文档数量，从默认80增加到1000
-  max_results: 3000           # 最大匹配结果数量
+  # 搜索范围配置 - 适度减少搜索范围，提高匹配精度
+  default_search_k: 1000      # 语义搜索返回的候选文档数量，减少到2000提高精度
+  max_results: 1000           # 最大匹配结果数量，减少到1000
   
   # 时间感知匹配配置 - 解决新数据被老数据掩盖的问题
   time_aware_matching:
@@ -434,20 +460,28 @@ resume_matching_advanced:
       balanced:
         equal_weight: 0.5                  # 平衡策略权重
   
-  # 优化后的权重配置 - 进一步提高薪资权重过滤低薪职位
+  # 优化后的权重配置 - 更严格的匹配标准
   matching_weights:
-    semantic_similarity: 0.25  # 语义相似度（适当降低，为薪资让出权重）
-    skills_match: 0.40         # 技能匹配（降低权重，避免过度匹配）
-    experience_match: 0.10     # 经验匹配（保持权重，重视资深经验）
-    industry_match: 0.05       # 行业匹配（保持权重，重视行业经验）
-    salary_match: 0.20         # 薪资匹配（大幅提高权重，强力过滤低薪职位）
+    semantic_similarity: 0.30  # 语义相似度（降低权重，避免过度宽泛）
+    skills_match: 0.50         # 技能匹配（提高权重，更严格要求）
+    experience_match: 0.08     # 经验匹配（适度提高）
+    industry_match: 0.02       # 行业匹配（适度提高）
+    salary_match: 0.05         # 薪资匹配（降低，避免薪资不匹配影响）
   
-  # 优化后的匹配质量等级阈值配置 - 平衡匹配数量和质量
+  # 语义相似度配置 - 新增向量优先策略
+  semantic_similarity:
+    use_vector_scores: true              # 优先使用向量搜索分数
+    fallback_strategy: "document_type_weighted"  # 回退策略
+    enable_chinese_optimization: true    # 启用中文优化
+    confidence_threshold: 0.3           # 置信度阈值
+    strategy: "vector_based"            # 语义策略: vector_based/hybrid/keyword_only
+  
+  # 优化后的匹配质量等级阈值配置 - 提高质量标准，降低通过率
   match_thresholds:
-    excellent: 0.75    # 优秀匹配：75分以上（强烈推荐申请）
-    good: 0.65         # 良好匹配：65-74分（推荐申请）
-    fair: 0.55         # 一般匹配：55-64分（可以考虑）
-    poor: 0.45         # 最低匹配：45分以上（适中阈值，平衡数量和质量）
+    excellent: 0.75    # 优秀匹配：80分以上（强烈推荐申请）
+    good: 0.70         # 良好匹配：70-79分（推荐申请）
+    fair: 0.65         # 一般匹配：60-69分（可以考虑）
+    poor: 0.60         # 最低匹配：55分以上（提高阈值，减少低质量匹配）
   
   # 技能权重配置
   skill_weights:

@@ -338,7 +338,7 @@ class DatabaseManager:
                 'avg_semantic_score': 0
             }
     
-    def mark_job_as_processed(self, job_id: str, doc_count: int = 0, vector_id: str = None, semantic_score: float = None) -> bool:
+    def mark_job_as_processed(self, job_id: str, doc_count: int = 0, vector_id: str = None, semantic_score: float = None, structured_data: str = None) -> bool:
         """
         标记职位为已RAG处理
         
@@ -347,6 +347,7 @@ class DatabaseManager:
             doc_count: 生成的向量文档数量
             vector_id: 向量ID
             semantic_score: 语义评分
+            structured_data: 结构化数据JSON字符串
             
         Returns:
             是否更新成功
@@ -362,9 +363,10 @@ class DatabaseManager:
                         rag_processed_at = ?,
                         vector_doc_count = ?,
                         vector_id = ?,
-                        semantic_score = ?
+                        semantic_score = ?,
+                        structured_data = ?
                     WHERE job_id = ?
-                """, (now, doc_count, vector_id, semantic_score, job_id))
+                """, (now, doc_count, vector_id, semantic_score, structured_data, job_id))
                 
                 conn.commit()
                 success = cursor.rowcount > 0
@@ -380,7 +382,7 @@ class DatabaseManager:
     
     def get_unprocessed_jobs(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
-        获取未进行RAG处理的职位（包含详细信息）
+        获取未进行RAG处理的职位（包含详细信息，过滤已删除职位）
         
         Args:
             limit: 限制数量
@@ -392,19 +394,21 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # 联合查询jobs和job_details表
+                # 联合查询jobs和job_details表，过滤已删除职位
                 cursor.execute("""
                     SELECT
                         j.id, j.job_id, j.title, j.company, j.url, j.job_fingerprint,
                         j.application_status, j.match_score, j.semantic_score, j.vector_id,
                         j.structured_data, j.website, j.created_at, j.submitted_at,
                         j.rag_processed, j.rag_processed_at, j.vector_doc_count,
+                        j.is_deleted, j.deleted_at,
                         jd.salary, jd.location, jd.experience, jd.education,
                         jd.description, jd.requirements, jd.benefits, jd.publish_time,
                         jd.company_scale, jd.industry, jd.keyword, jd.extracted_at
                     FROM jobs j
                     LEFT JOIN job_details jd ON j.job_id = jd.job_id
-                    WHERE j.rag_processed = 0 OR j.rag_processed IS NULL
+                    WHERE (j.rag_processed = 0 OR j.rag_processed IS NULL)
+                      AND (j.is_deleted = 0 OR j.is_deleted IS NULL)
                     ORDER BY j.created_at DESC
                     LIMIT ?
                 """, (limit,))
@@ -439,6 +443,7 @@ class DatabaseManager:
                         j.application_status, j.match_score, j.semantic_score, j.vector_id,
                         j.structured_data, j.website, j.created_at, j.submitted_at,
                         j.rag_processed, j.rag_processed_at, j.vector_doc_count,
+                        j.is_deleted, j.deleted_at,
                         jd.salary, jd.location, jd.experience, jd.education,
                         jd.description, jd.requirements, jd.benefits, jd.publish_time,
                         jd.company_scale, jd.industry, jd.keyword, jd.extracted_at

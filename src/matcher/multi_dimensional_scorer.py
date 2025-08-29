@@ -2,14 +2,13 @@
 """
 多维度评分系统
 基于语义相似度、技能匹配、经验匹配、行业匹配、薪资匹配等多个维度进行评分
+优化版本：移除TF-IDF依赖，使用向量搜索分数进行语义匹配
 """
 
 import re
 import math
 from typing import List, Dict, Any, Optional, Tuple
 from langchain.schema import Document
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 from ..utils.logger import get_logger
@@ -61,12 +60,10 @@ class MultiDimensionalScorer:
             'hadoop': ['Hadoop', 'hadoop', 'Apache Hadoop']
         }
         
-        # 初始化TF-IDF向量化器
-        self.tfidf_vectorizer = TfidfVectorizer(
-            max_features=1000,
-            stop_words='english',
-            ngram_range=(1, 2)
-        )
+        # 语义相似度计算配置
+        self.semantic_config = self.config.get('semantic_similarity', {})
+        self.use_vector_scores = self.semantic_config.get('use_vector_scores', True)
+        self.fallback_strategy = self.semantic_config.get('fallback_strategy', 'document_type_weighted')
     
     def calculate_comprehensive_score(self,
                                     resume_profile: GenericResumeProfile,
@@ -135,28 +132,97 @@ class MultiDimensionalScorer:
     def _calculate_semantic_similarity(self,
                                      resume_profile: GenericResumeProfile,
                                      job_documents: List[Document]) -> float:
-        """计算语义相似度"""
+        """
+        计算语义相似度 - 优化版本
+        优先使用向量搜索分数，提供更准确的中文语义匹配
+        """
         try:
-            # 构建简历文本
-            resume_text = self._build_resume_text(resume_profile)
+            if self.use_vector_scores:
+                # 方案1: 基于向量搜索分数计算语义相似度
+                vector_score = self._calculate_vector_based_similarity(job_documents)
+                if vector_score > 0:
+                    self.logger.debug(f"使用向量搜索分数: {vector_score:.3f}")
+                    return vector_score
             
-            # 构建职位文本
-            job_text = " ".join([doc.page_content for doc in job_documents])
-            
-            # 使用TF-IDF计算相似度
-            texts = [resume_text, job_text]
-            tfidf_matrix = self.tfidf_vectorizer.fit_transform(texts)
-            similarity_matrix = cosine_similarity(tfidf_matrix)
-            
-            # 返回相似度分数
-            similarity_score = similarity_matrix[0, 1]
-            
-            # 归一化到0-1范围
-            return max(0.0, min(1.0, similarity_score))
+            # 方案2: 回退策略 - 基于文档类型加权
+            fallback_score = self._calculate_document_type_similarity(job_documents)
+            self.logger.debug(f"使用回退策略分数: {fallback_score:.3f}")
+            return fallback_score
             
         except Exception as e:
             self.logger.error(f"计算语义相似度失败: {str(e)}")
             return 0.0
+    
+    def _calculate_vector_based_similarity(self, job_documents: List[Document]) -> float:
+        """基于向量搜索分数计算语义相似度"""
+        try:
+            search_scores = []
+            for doc in job_documents:
+                if 'search_score' in doc.metadata:
+                    score = doc.metadata['search_score']
+                    # 确保分数在合理范围内
+                    if isinstance(score, (int, float)) and 0 <= score <= 1:
+                        search_scores.append(score)
+            
+            if not search_scores:
+                return 0.0
+            
+            # 使用加权平均，给高分更多权重
+            if len(search_scores) == 1:
+                return search_scores[0]
+            
+            # 多个文档时使用加权平均
+            weights = [score ** 1.5 for score in search_scores]  # 给高分更多权重
+            total_weight = sum(weights)
+            
+            if total_weight > 0:
+                weighted_avg = sum(s * w for s, w in zip(search_scores, weights)) / total_weight
+                return min(1.0, max(0.0, weighted_avg))
+            
+            return sum(search_scores) / len(search_scores)
+            
+        except Exception as e:
+            self.logger.error(f"向量相似度计算失败: {str(e)}")
+            return 0.0
+    
+    def _calculate_document_type_similarity(self, job_documents: List[Document]) -> float:
+        """基于文档类型的语义权重计算"""
+        try:
+            # 不同文档类型的重要性权重
+            type_weights = {
+                'overview': 0.9,           # 职位概览最重要
+                'skills': 0.85,            # 技能要求很重要
+                'responsibility': 0.75,    # 职责描述重要
+                'requirement': 0.75,       # 任职要求重要
+                'basic_requirements': 0.6, # 基本要求一般
+                'company_info': 0.4,       # 公司信息权重低
+                'benefits': 0.3            # 福利待遇权重最低
+            }
+            
+            total_weight = 0
+            weighted_score = 0
+            
+            for doc in job_documents:
+                doc_type = doc.metadata.get('type', 'unknown')
+                type_weight = type_weights.get(doc_type, 0.5)
+                
+                # 获取搜索分数，如果没有则使用默认值
+                search_score = doc.metadata.get('search_score', 0.5)
+                if not isinstance(search_score, (int, float)) or search_score < 0:
+                    search_score = 0.5
+                
+                total_weight += type_weight
+                weighted_score += search_score * type_weight
+            
+            if total_weight > 0:
+                final_score = weighted_score / total_weight
+                return min(1.0, max(0.0, final_score))
+            
+            return 0.5  # 默认中等分数
+            
+        except Exception as e:
+            self.logger.error(f"文档类型相似度计算失败: {str(e)}")
+            return 0.5
     
     def _calculate_skills_match(self,
                               resume_profile: GenericResumeProfile,

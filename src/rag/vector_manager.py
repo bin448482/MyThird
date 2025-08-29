@@ -70,23 +70,95 @@ class ChromaDBManager:
                        f"新数据天数={self.fresh_data_days}, 时间衰减={self.time_decay_factor}")
     
     def _init_embeddings(self) -> HuggingFaceEmbeddings:
-        """初始化嵌入模型"""
+        """
+        初始化嵌入模型 - 优化中文语义匹配
+        支持多种中文优化的向量模型
+        """
         embeddings_config = self.config.get('embeddings', {})
         
-        model_name = embeddings_config.get(
-            'model_name',
-            'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
-        )
+        # 优化的中文语义模型选择
+        model_name = embeddings_config.get('model_name')
+        
+        if not model_name:
+            # 根据配置选择最佳中文模型
+            chinese_optimized = embeddings_config.get('chinese_optimized', True)
+            if chinese_optimized:
+                # 优先选择中文优化模型
+                model_name = self._select_best_chinese_model(embeddings_config)
+            else:
+                # 使用多语言模型
+                model_name = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
+        
+        logger.info(f"使用向量模型: {model_name}")
+        
+        # 模型参数配置
+        model_kwargs = {
+            'device': embeddings_config.get('device', 'cpu'),
+            'trust_remote_code': embeddings_config.get('trust_remote_code', True)
+        }
+        
+        # 编码参数配置
+        encode_kwargs = {
+            'normalize_embeddings': embeddings_config.get('normalize_embeddings', True),
+            'batch_size': embeddings_config.get('batch_size', 32)
+            # 移除 show_progress_bar 参数，避免与 SentenceTransformer.encode() 冲突
+        }
         
         return HuggingFaceEmbeddings(
             model_name=model_name,
-            model_kwargs={
-                'device': embeddings_config.get('device', 'cpu')
-            },
-            encode_kwargs={
-                'normalize_embeddings': embeddings_config.get('normalize_embeddings', True)
-            }
+            model_kwargs=model_kwargs,
+            encode_kwargs=encode_kwargs
         )
+    
+    def _select_best_chinese_model(self, embeddings_config: Dict) -> str:
+        """选择最佳中文语义模型"""
+        
+        # 中文优化模型优先级列表
+        chinese_models = [
+            # 专业中文模型（推荐）
+            'shibing624/text2vec-base-chinese',
+            'GanymedeNil/text2vec-large-chinese',
+            'moka-ai/m3e-base',
+            
+            # 多语言模型（中文支持良好）
+            'sentence-transformers/paraphrase-multilingual-mpnet-base-v2',
+            'sentence-transformers/distiluse-base-multilingual-cased',
+            'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+            
+            # 备选模型
+            'sentence-transformers/all-MiniLM-L6-v2'
+        ]
+        
+        # 根据性能要求选择模型
+        performance_level = embeddings_config.get('performance_level', 'balanced')
+        
+        if performance_level == 'high':
+            # 高性能模型（更大，更准确）
+            preferred_models = [
+                'GanymedeNil/text2vec-large-chinese',
+                'sentence-transformers/paraphrase-multilingual-mpnet-base-v2',
+                'moka-ai/m3e-base'
+            ]
+        elif performance_level == 'fast':
+            # 快速模型（更小，更快）
+            preferred_models = [
+                'shibing624/text2vec-base-chinese',
+                'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+                'sentence-transformers/all-MiniLM-L6-v2'
+            ]
+        else:
+            # 平衡模型（默认）
+            preferred_models = [
+                'shibing624/text2vec-base-chinese',
+                'moka-ai/m3e-base',
+                'sentence-transformers/paraphrase-multilingual-mpnet-base-v2'
+            ]
+        
+        # 返回首选模型
+        selected_model = preferred_models[0]
+        logger.info(f"选择中文优化模型: {selected_model} (性能级别: {performance_level})")
+        
+        return selected_model
     
     def _init_vectorstore(self) -> Chroma:
         """初始化ChromaDB向量存储"""

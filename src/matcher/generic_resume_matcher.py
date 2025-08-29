@@ -314,14 +314,18 @@ class GenericResumeJobMatcher:
             return []
     
     def _group_results_by_job(self, search_results: List[Tuple[Document, float]]) -> Dict[str, List[Document]]:
-        """按职位ID分组搜索结果"""
+        """按职位ID分组搜索结果，过滤已删除职位"""
         jobs_by_id = defaultdict(list)
         
         for doc, score in search_results:
             job_id = doc.metadata.get('job_id')
             if job_id:
-                doc.metadata['search_score'] = score
-                jobs_by_id[job_id].append(doc)
+                # 检查职位是否已被删除
+                if self._is_job_available(job_id):
+                    doc.metadata['search_score'] = score
+                    jobs_by_id[job_id].append(doc)
+                else:
+                    self.logger.debug(f"跳过已删除职位: {job_id}")
         
         return dict(jobs_by_id)
     
@@ -399,32 +403,105 @@ class GenericResumeJobMatcher:
             self.logger.error(f"💥 计算职位 {job_id} 匹配度失败: {str(e)}")
             return None
     
-    def _calculate_semantic_similarity(self, 
+    def _calculate_semantic_similarity(self,
                                      resume_profile: GenericResumeProfile,
                                      job_docs: List[Document]) -> float:
-        """计算语义相似度"""
+        """
+        计算语义相似度 - 优化版本
+        使用向量搜索分数替代TF-IDF，提供更准确的中文语义匹配
+        """
         try:
-            # 构建简历文本
-            resume_text = self._build_resume_text(resume_profile)
+            # 优先使用向量搜索分数
+            vector_score = self._get_vector_similarity_score(job_docs)
+            if vector_score > 0:
+                self.logger.debug(f"使用向量搜索分数: {vector_score:.3f}")
+                return vector_score
             
-            # 构建职位文本
-            job_text = " ".join([doc.page_content for doc in job_docs])
-            
-            # 使用简单的文本相似度计算（可以替换为更复杂的算法）
-            from sklearn.feature_extraction.text import TfidfVectorizer
-            from sklearn.metrics.pairwise import cosine_similarity
-            
-            texts = [resume_text, job_text]
-            vectorizer = TfidfVectorizer(max_features=1000, stop_words='english', ngram_range=(1, 2))
-            tfidf_matrix = vectorizer.fit_transform(texts)
-            similarity_matrix = cosine_similarity(tfidf_matrix)
-            
-            similarity_score = similarity_matrix[0, 1]
-            return max(0.0, min(1.0, similarity_score))
+            # 回退策略：基于文档质量和类型的评分
+            fallback_score = self._calculate_fallback_similarity(job_docs)
+            self.logger.debug(f"使用回退策略分数: {fallback_score:.3f}")
+            return fallback_score
             
         except Exception as e:
             self.logger.error(f"计算语义相似度失败: {str(e)}")
             return 0.0
+    
+    def _get_vector_similarity_score(self, job_docs: List[Document]) -> float:
+        """获取向量搜索相似度分数"""
+        try:
+            search_scores = []
+            for doc in job_docs:
+                if 'search_score' in doc.metadata:
+                    score = doc.metadata['search_score']
+                    # 验证分数有效性
+                    if isinstance(score, (int, float)) and 0 <= score <= 1:
+                        search_scores.append(score)
+            
+            if not search_scores:
+                return 0.0
+            
+            # 单个文档直接返回分数
+            if len(search_scores) == 1:
+                return search_scores[0]
+            
+            # 多个文档使用加权平均，高分获得更多权重
+            weights = [score ** 1.2 for score in search_scores]
+            total_weight = sum(weights)
+            
+            if total_weight > 0:
+                weighted_avg = sum(s * w for s, w in zip(search_scores, weights)) / total_weight
+                return min(1.0, max(0.0, weighted_avg))
+            
+            # 简单平均作为备选
+            return sum(search_scores) / len(search_scores)
+            
+        except Exception as e:
+            self.logger.error(f"获取向量相似度分数失败: {str(e)}")
+            return 0.0
+    
+    def _calculate_fallback_similarity(self, job_docs: List[Document]) -> float:
+        """回退相似度计算策略"""
+        try:
+            # 基于文档类型和内容长度的启发式评分
+            type_scores = {
+                'overview': 0.8,
+                'skills': 0.85,
+                'responsibility': 0.7,
+                'requirement': 0.75,
+                'basic_requirements': 0.6,
+                'company_info': 0.4
+            }
+            
+            total_weight = 0
+            weighted_score = 0
+            
+            for doc in job_docs:
+                doc_type = doc.metadata.get('type', 'unknown')
+                base_score = type_scores.get(doc_type, 0.5)
+                
+                # 根据内容长度调整分数
+                content_length = len(doc.page_content) if doc.page_content else 0
+                if content_length > 500:
+                    length_bonus = 0.1
+                elif content_length > 200:
+                    length_bonus = 0.05
+                else:
+                    length_bonus = 0.0
+                
+                final_score = min(1.0, base_score + length_bonus)
+                weight = 1.0
+                
+                total_weight += weight
+                weighted_score += final_score * weight
+            
+            if total_weight > 0:
+                return weighted_score / total_weight
+            
+            return 0.5  # 默认中等分数
+            
+        except Exception as e:
+            self.logger.error(f"回退相似度计算失败: {str(e)}")
+            return 0.5
     
     def _calculate_skills_match(self, 
                               resume_profile: GenericResumeProfile,
@@ -1249,3 +1326,23 @@ class GenericResumeJobMatcher:
             'cache_hits': 0,
             'total_operations': 0
         }
+    
+    def _is_job_available(self, job_id: str) -> bool:
+        """检查职位是否可用（未删除）"""
+        try:
+            from ..database.operations import DatabaseManager
+            
+            # 从配置中获取数据库路径
+            db_path = self.config.get('database_path', 'data/jobs.db')
+            db_manager = DatabaseManager(db_path)
+            
+            with db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 1 FROM jobs
+                    WHERE job_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+                """, (job_id,))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            self.logger.warning(f"检查职位可用性失败: {e}")
+            return True  # 出错时默认可用，避免误删

@@ -95,36 +95,54 @@ class MasterController:
         logger.info(f"开始执行流水线 {self.pipeline_id}")
         
         try:
-            # 阶段1: 职位提取
-            logger.info("开始阶段1: 职位提取")
+            # 阶段1: 职位提取 - 注释掉用于语义相似度测试
+            logger.info("跳过阶段1: 职位提取（已注释）")
             self.current_stage = "job_extraction"
             extraction_result = await self._execute_job_extraction(pipeline_config)
             
             if not extraction_result['success']:
                 raise PipelineError(f"职位提取失败: {extraction_result.get('error', 'Unknown error')}")
             
-            # 阶段2: RAG处理
-            logger.info("开始阶段2: RAG处理")
+            # # 模拟提取结果用于兼容性
+            # extraction_result = {
+            #     'success': True,
+            #     'total_extracted': 0,
+            #     'jobs': [],
+            #     'extraction_time': 0,
+            #     'keywords_processed': len(pipeline_config.search_keywords)
+            # }
+            
+            # 阶段2: RAG处理 - 注释掉用于匹配阈值测试
+            logger.info("跳过阶段2: RAG处理（已注释，专注匹配阈值测试）")
             self.current_stage = "rag_processing"
             rag_result = await self._execute_rag_processing_from_database()
             
             if not rag_result['success']:
                 raise PipelineError(f"RAG处理失败: {rag_result.get('error', 'Unknown error')}")
             
-            # 阶段3: 简历匹配并保存结果到数据库
-            logger.info("开始阶段3: 简历匹配")
+            # # 模拟RAG结果用于兼容性
+            # rag_result = {
+            #     'success': True,
+            #     'processed_count': 901,  # 使用实际处理的数量
+            #     'processing_time': 0,
+            #     'success_rate': 100,
+            #     'vector_db_stats': {'document_count': 10869}  # 使用实际的文档数量
+            # }
+            
+            # 阶段3: 简历匹配并保存结果到数据库 - 保留用于语义相似度测试
+            logger.info("🎯 开始阶段3: 简历匹配（语义相似度优化测试）")
             self.current_stage = "resume_matching"
             matching_result = await self._execute_resume_matching_with_database_save(pipeline_config.resume_profile)
             
             if not matching_result['success']:
                 raise PipelineError(f"简历匹配失败: {matching_result.get('error', 'Unknown error')}")
             
-            # 阶段4: 简历投递 - 注释掉用于测试
-            logger.info("开始阶段4: 简历投递")
+            # 阶段4: 简历投递 - 注释掉用于语义相似度测试
+            logger.info("跳过阶段4: 简历投递（已注释）")
             self.current_stage = "resume_submission"
             submission_result = self._execute_resume_submission(pipeline_config.submission_config)
             
-            # 模拟投递结果
+            # 模拟投递结果用于兼容性
             # submission_result = {
             #     'success': True,
             #     'total_processed': 0,

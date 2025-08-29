@@ -283,18 +283,9 @@ class ResumeSubmissionEngine:
         try:
             self.logger.info(f"🎯 开始批量投递（同步），批次大小: {batch_size}")
             
-            # 1. 检查每日限制
-            if not self.anti_crawler.check_daily_limit():
-                self.logger.warning("已达到每日投递限制")
-                self.current_report.finalize()
-                return self.current_report
-            
-            # 2. 获取待投递的职位
-            remaining_quota = self.anti_crawler.get_remaining_daily_quota()
-            actual_batch_size = min(batch_size, remaining_quota)
-            
+            # 1. 获取待投递的职位（移除每日限制检查）
             pending_jobs = self.data_manager.get_unprocessed_matches(
-                limit=actual_batch_size
+                limit=batch_size
             )
             
             if not pending_jobs:
@@ -317,9 +308,9 @@ class ResumeSubmissionEngine:
                     # 更新数据库
                     self.data_manager.update_submission_result(result)
                     
-                    # 如果成功，增加每日计数
-                    if result.status == SubmissionStatus.SUCCESS:
-                        self.anti_crawler.increment_daily_count()
+                    # 移除每日计数增加（保留注释以备将来需要）
+                    # if result.status == SubmissionStatus.SUCCESS:
+                    #     self.anti_crawler.increment_daily_count()
                     
                     # 应用延迟
                     self.anti_crawler.apply_delay()
@@ -386,18 +377,9 @@ class ResumeSubmissionEngine:
         try:
             self.logger.info(f"🎯 开始批量投递，批次大小: {batch_size}")
             
-            # 1. 检查每日限制
-            if not self.anti_crawler.check_daily_limit():
-                self.logger.warning("已达到每日投递限制")
-                self.current_report.finalize()
-                return self.current_report
-            
-            # 2. 获取待投递的职位
-            remaining_quota = self.anti_crawler.get_remaining_daily_quota()
-            actual_batch_size = min(batch_size, remaining_quota)
-            
+            # 1. 获取待投递的职位（移除每日限制检查）
             pending_jobs = self.data_manager.get_unprocessed_matches(
-                limit=actual_batch_size
+                limit=batch_size
             )
             
             if not pending_jobs:
@@ -420,9 +402,9 @@ class ResumeSubmissionEngine:
                     # 更新数据库
                     self.data_manager.update_submission_result(result)
                     
-                    # 如果成功，增加每日计数
-                    if result.status == SubmissionStatus.SUCCESS:
-                        self.anti_crawler.increment_daily_count()
+                    # 移除每日计数增加（保留注释以备将来需要）
+                    # if result.status == SubmissionStatus.SUCCESS:
+                    #     self.anti_crawler.increment_daily_count()
                     
                     # 应用延迟
                     self.anti_crawler.apply_delay()

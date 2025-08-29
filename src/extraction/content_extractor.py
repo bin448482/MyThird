@@ -585,6 +585,146 @@ class ContentExtractor:
             self.logger.error(f"❌ 页面导航失败: {e}")
             raise ContentExtractionError(f"页面导航失败: {e}")
     
+    def _click_salary_filter(self, driver) -> None:
+        """
+        点击薪资过滤器（3-4万）
+        
+        Args:
+            driver: WebDriver实例
+        """
+        try:
+            self.logger.info("🎯 开始点击薪资过滤器（3-4万）")
+            
+            # 等待页面稳定
+            time.sleep(2)
+            
+            # 多种选择器策略来查找薪资过滤器
+            salary_filter_selectors = [
+                'a[data-v-1cfe2d3c].ch span[data-v-1cfe2d3c]:contains("3-4万")',  # 精确匹配
+                'a.ch span:contains("3-4万")',  # 简化匹配
+                'a[class*="ch"] span:contains("3-4万")',  # 部分类名匹配
+                'a span:contains("3-4万")',  # 最宽泛匹配
+                'span:contains("3-4万")',  # 直接匹配span
+                '*[data-v-1cfe2d3c]:contains("3-4万")'  # 任何包含data-v属性的元素
+            ]
+            
+            # 使用JavaScript查找包含"3-4万"文本的元素
+            salary_element = None
+            
+            # 方法1: 使用JavaScript查找文本内容
+            try:
+                salary_element = driver.execute_script("""
+                    // 查找所有包含"3-4万"文本的元素
+                    var elements = document.querySelectorAll('*');
+                    for (var i = 0; i < elements.length; i++) {
+                        var element = elements[i];
+                        if (element.textContent && element.textContent.includes('3-4万')) {
+                            // 优先选择链接元素
+                            if (element.tagName === 'A' || element.closest('a')) {
+                                return element.tagName === 'A' ? element : element.closest('a');
+                            }
+                        }
+                    }
+                    
+                    // 如果没找到链接，返回第一个包含文本的元素
+                    for (var i = 0; i < elements.length; i++) {
+                        var element = elements[i];
+                        if (element.textContent && element.textContent.includes('3-4万')) {
+                            return element;
+                        }
+                    }
+                    return null;
+                """)
+                
+                if salary_element:
+                    self.logger.info("✅ 通过JavaScript找到薪资过滤器元素")
+                
+            except Exception as e:
+                self.logger.debug(f"JavaScript查找失败: {e}")
+            
+            # 方法2: 使用XPath查找
+            if not salary_element:
+                try:
+                    from selenium.webdriver.common.by import By
+                    xpath_selectors = [
+                        "//a[contains(@class, 'ch')]//span[contains(text(), '3-4万')]",
+                        "//a//span[contains(text(), '3-4万')]",
+                        "//span[contains(text(), '3-4万')]",
+                        "//*[contains(text(), '3-4万')]"
+                    ]
+                    
+                    for xpath in xpath_selectors:
+                        try:
+                            elements = driver.find_elements(By.XPATH, xpath)
+                            if elements:
+                                salary_element = elements[0]
+                                self.logger.info(f"✅ 通过XPath找到薪资过滤器元素: {xpath}")
+                                break
+                        except:
+                            continue
+                            
+                except Exception as e:
+                    self.logger.debug(f"XPath查找失败: {e}")
+            
+            # 如果找到元素，尝试点击
+            if salary_element:
+                try:
+                    # 滚动到元素位置
+                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", salary_element)
+                    time.sleep(1)
+                    
+                    # 尝试多种点击方式
+                    click_success = False
+                    
+                    # 方式1: 标准点击
+                    try:
+                        salary_element.click()
+                        click_success = True
+                        self.logger.info("✅ 标准点击薪资过滤器成功")
+                    except Exception as e:
+                        self.logger.debug(f"标准点击失败: {e}")
+                    
+                    # 方式2: JavaScript点击
+                    if not click_success:
+                        try:
+                            driver.execute_script("arguments[0].click();", salary_element)
+                            click_success = True
+                            self.logger.info("✅ JavaScript点击薪资过滤器成功")
+                        except Exception as e:
+                            self.logger.debug(f"JavaScript点击失败: {e}")
+                    
+                    # 方式3: ActionChains点击
+                    if not click_success:
+                        try:
+                            from selenium.webdriver.common.action_chains import ActionChains
+                            ActionChains(driver).click(salary_element).perform()
+                            click_success = True
+                            self.logger.info("✅ ActionChains点击薪资过滤器成功")
+                        except Exception as e:
+                            self.logger.debug(f"ActionChains点击失败: {e}")
+                    
+                    if click_success:
+                        # 等待过滤器生效
+                        time.sleep(3)
+                        self.logger.info("🎯 薪资过滤器点击完成，等待页面更新")
+                    else:
+                        self.logger.warning("⚠️ 所有点击方式都失败，但继续执行")
+                        
+                except Exception as e:
+                    self.logger.warning(f"⚠️ 点击薪资过滤器时出错: {e}")
+            else:
+                self.logger.warning("⚠️ 未找到薪资过滤器元素，跳过点击")
+                # 打印页面信息用于调试
+                try:
+                    page_source_snippet = driver.page_source[:1000] if len(driver.page_source) > 1000 else driver.page_source
+                    self.logger.debug(f"页面源码片段: {page_source_snippet}")
+                except:
+                    pass
+            
+        except Exception as e:
+            self.logger.error(f"❌ 点击薪资过滤器失败: {e}")
+            # 不抛出异常，继续执行后续流程
+    
     def _extract_keyword_from_url(self, url: str) -> str:
         """
         从URL中提取关键词
@@ -1546,6 +1686,9 @@ class ContentExtractor:
             
             # 导航到搜索页面
             self._navigate_to_page(driver, search_url)
+            
+            # 点击薪资过滤器（3-4万）- 每次关键词搜索执行一次
+            self._click_salary_filter(driver)
             
             # 获取配置参数
             max_pages = max_pages or self.search_config.get('strategy', {}).get('max_pages', 5)

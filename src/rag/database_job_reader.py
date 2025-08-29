@@ -251,7 +251,7 @@ class DatabaseJobReader:
             self.logger.error(f"批量获取未处理职位失败: {e}")
             raise DatabaseError(f"批量获取未处理职位失败: {e}")
     
-    def mark_job_as_processed(self, job_id: str, doc_count: int = 0, vector_id: str = None, semantic_score: float = None) -> bool:
+    def mark_job_as_processed(self, job_id: str, doc_count: int = 0, vector_id: str = None, semantic_score: float = None, structured_data: str = None) -> bool:
         """
         标记职位为已RAG处理
         
@@ -260,12 +260,13 @@ class DatabaseJobReader:
             doc_count: 生成的向量文档数量
             vector_id: 向量ID
             semantic_score: 语义评分
+            structured_data: 结构化数据JSON字符串
             
         Returns:
             是否标记成功
         """
         try:
-            return self.db_manager.mark_job_as_processed(job_id, doc_count, vector_id, semantic_score)
+            return self.db_manager.mark_job_as_processed(job_id, doc_count, vector_id, semantic_score, structured_data)
         except Exception as e:
             self.logger.error(f"标记职位处理状态失败: {e}")
             return False

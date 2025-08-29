@@ -84,8 +84,9 @@ class RAGSystemCoordinator:
             processing_config = self.rag_config.get('processing', {})
             self.job_processor = OptimizedJobProcessor(llm_config, processing_config)
             
-            # 向量管理器
+            # 向量管理器 - 需要传递LLM配置用于压缩检索器
             vector_config = self.rag_config.get('vector_db', {})
+            vector_config['llm'] = self.rag_config.get('llm', {})  # 添加LLM配置
             self.vector_manager = ChromaDBManager(vector_config)
             
             # 文档创建器
@@ -334,13 +335,31 @@ class RAGSystemCoordinator:
             # 5. 计算语义评分（基于文档数量和内容质量）
             semantic_score = self._calculate_semantic_score(job_structure, documents)
             
-            # 6. 更新处理状态
+            # 6. 准备结构化数据JSON
+            import json
+            structured_data_dict = {
+                'job_title': job_structure.job_title,
+                'company': job_structure.company,
+                'responsibilities': job_structure.responsibilities,
+                'requirements': job_structure.requirements,
+                'skills': job_structure.skills,
+                'education': job_structure.education,
+                'experience': job_structure.experience,
+                'salary_min': job_structure.salary_min,
+                'salary_max': job_structure.salary_max,
+                'location': job_structure.location,
+                'company_size': job_structure.company_size
+            }
+            structured_data_json = json.dumps(structured_data_dict, ensure_ascii=False)
+            
+            # 7. 更新处理状态
             vector_id = doc_ids[0] if doc_ids else None
             self.db_reader.mark_job_as_processed(
                 job_id,
                 doc_count=len(documents),
                 vector_id=vector_id,
-                semantic_score=semantic_score
+                semantic_score=semantic_score,
+                structured_data=structured_data_json
             )
             
             logger.debug(f"成功处理职位: {job_id} - {job_structure.job_title}")

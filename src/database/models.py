@@ -67,7 +67,7 @@ class JobRecord:
 class DatabaseSchema:
     """数据库表结构定义"""
     
-    # 职位信息表（扩展RAG支持）
+    # 职位信息表（扩展RAG支持，添加软删除支持）
     JOBS_TABLE = """
     CREATE TABLE IF NOT EXISTS jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +86,9 @@ class DatabaseSchema:
         submitted_at TIMESTAMP,
         rag_processed BOOLEAN DEFAULT FALSE,
         rag_processed_at TIMESTAMP,
-        vector_doc_count INTEGER DEFAULT 0
+        vector_doc_count INTEGER DEFAULT 0,
+        is_deleted BOOLEAN DEFAULT FALSE,
+        deleted_at TIMESTAMP
     )
     """
     

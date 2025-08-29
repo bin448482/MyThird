@@ -33,6 +33,7 @@ ENV/
 *.swo
 
 # Project specific
+reports/
 data/*.db
 logs/*.log
 # config/config.yaml

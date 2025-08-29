@@ -106,7 +106,7 @@ class SubmissionDataManager:
                 query_limit = limit
                 
                 # 查询未处理的匹配记录，关联jobs表获取URL等信息，包含薪资匹配度
-                # 按照与人工查询一致的排序：skill_match_score desc
+                # 过滤掉已删除的职位，按照与人工查询一致的排序：skill_match_score desc
                 sql = f"""
                     SELECT
                         rm.id, rm.job_id, rm.match_score, rm.priority_level,
@@ -114,7 +114,7 @@ class SubmissionDataManager:
                         j.title, j.company, j.url
                     FROM resume_matches rm
                     JOIN jobs j ON rm.job_id = j.job_id
-                    WHERE {where_clause}
+                    WHERE {where_clause} AND (j.is_deleted = 0 OR j.is_deleted IS NULL)
                     ORDER BY rm.skill_match_score DESC
                     LIMIT ?
                 """
@@ -501,7 +501,7 @@ class SubmissionDataManager:
     
     def delete_suspended_job(self, match_id: int) -> bool:
         """
-        删除暂停招聘的职位记录
+        删除暂停招聘的职位记录（软删除）
         
         Args:
             match_id: 匹配记录ID
@@ -513,14 +513,36 @@ class SubmissionDataManager:
             with self.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
                 
+                # 获取job_id
+                cursor.execute("SELECT job_id FROM resume_matches WHERE id = ?", (match_id,))
+                result = cursor.fetchone()
+                if not result:
+                    self.logger.warning(f"未找到匹配记录: match_id={match_id}")
+                    return False
+                
+                job_id = result['job_id']
+                now = datetime.now().isoformat()
+                
+                # 标记职位为已删除（软删除）
+                cursor.execute("""
+                    UPDATE jobs
+                    SET is_deleted = 1, deleted_at = ?
+                    WHERE job_id = ?
+                """, (now, job_id))
+                
+                job_updated = cursor.rowcount > 0
+                
                 # 删除匹配记录
                 cursor.execute("DELETE FROM resume_matches WHERE id = ?", (match_id,))
-                deleted_count = cursor.rowcount
+                match_deleted = cursor.rowcount > 0
                 
                 conn.commit()
                 
-                if deleted_count > 0:
-                    self.logger.info(f"删除暂停职位记录: match_id={match_id}")
+                if job_updated and match_deleted:
+                    self.logger.info(f"删除暂停职位记录: match_id={match_id}, job_id={job_id} (软删除)")
+                    return True
+                elif match_deleted:
+                    self.logger.info(f"删除匹配记录: match_id={match_id}, 但职位可能已被删除")
                     return True
                 else:
                     self.logger.warning(f"未找到要删除的记录: match_id={match_id}")
