@@ -226,23 +226,35 @@ class LoginModeController:
             
             self.logger.info(f"🔄 尝试恢复保存的会话: {session_file}")
             
-            # 确保浏览器已启动
+            # 确保浏览器已启动 - 添加网络异常处理
             driver = self.browser_manager.get_driver()
             if not driver:
-                driver = self.browser_manager.create_driver()
-            
-            # 加载会话
-            if self.session_manager.load_session(driver, session_file):
-                # 验证会话是否有效（减少页面跳转，使用保守验证策略）
-                if self.session_manager.is_session_valid(driver, test_keyword, preserve_current_page=True):
-                    self.current_session_file = session_file
-                    self.logger.info("✅ 会话恢复成功")
-                    return True
-                else:
-                    self.logger.warning("⚠️ 恢复的会话无效")
+                try:
+                    driver = self.browser_manager.create_driver()
+                except Exception as browser_e:
+                    self.logger.error(f"⚠️ 浏览器创建失败: {browser_e}")
                     return False
-            else:
-                self.logger.warning("⚠️ 会话加载失败")
+            
+            # 加载会话 - 添加网络异常处理
+            try:
+                if self.session_manager.load_session(driver, session_file):
+                    # 验证会话是否有效（减少页面跳转，使用保守验证策略）
+                    try:
+                        if self.session_manager.is_session_valid(driver, test_keyword, preserve_current_page=True):
+                            self.current_session_file = session_file
+                            self.logger.info("✅ 会话恢复成功")
+                            return True
+                        else:
+                            self.logger.warning("⚠️ 恢复的会话无效")
+                            return False
+                    except Exception as validation_e:
+                        self.logger.warning(f"⚠️ 会话验证过程中发生异常: {validation_e}")
+                        return False
+                else:
+                    self.logger.warning("⚠️ 会话加载失败")
+                    return False
+            except Exception as load_e:
+                self.logger.warning(f"⚠️ 会话加载过程中发生异常: {load_e}")
                 return False
                 
         except Exception as e:

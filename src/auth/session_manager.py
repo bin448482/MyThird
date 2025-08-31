@@ -12,7 +12,8 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import WebDriverException, TimeoutException
+import requests.exceptions
 
 from ..core.exceptions import SessionError
 
@@ -221,10 +222,19 @@ class SessionManager:
                     if current_domain != target_domain:
                         base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
                         self.logger.debug(f"导航到目标域名以设置Cookie: {base_url}")
-                        driver.get(base_url)
-                        # 等待页面加载
-                        import time
-                        time.sleep(1)
+                        
+                        # 添加网络异常处理
+                        try:
+                            driver.get(base_url)
+                            # 等待页面加载
+                            import time
+                            time.sleep(1)
+                        except (WebDriverException, TimeoutException, requests.exceptions.RequestException, ConnectionError) as e:
+                            self.logger.error(f"导航到目标域名失败: {e}")
+                            return False
+                        except Exception as e:
+                            self.logger.error(f"导航过程中发生未知异常: {e}")
+                            return False
                 
                 # 设置Cookies
                 successful_cookies = 0
@@ -269,12 +279,35 @@ class SessionManager:
             if original_url:
                 if driver.current_url != original_url:
                     self.logger.debug(f"恢复到原始URL: {original_url}")
-                    driver.get(original_url)
+                    
+                    # 添加网络异常处理
+                    try:
+                        driver.get(original_url)
+                    except (WebDriverException, TimeoutException, requests.exceptions.RequestException, ConnectionError) as e:
+                        self.logger.error(f"恢复到原始URL失败: {e}")
+                        # 尝试刷新当前页面作为备选方案
+                        try:
+                            self.logger.info("尝试刷新当前页面作为备选方案")
+                            driver.refresh()
+                        except Exception as refresh_e:
+                            self.logger.error(f"页面刷新也失败: {refresh_e}")
+                            return False
+                    except Exception as e:
+                        self.logger.error(f"恢复URL过程中发生未知异常: {e}")
+                        return False
                 else:
                     self.logger.debug("当前已在目标URL，刷新页面以使会话生效")
-                    driver.refresh()
-                    # 等待页面刷新完成
-                    import time
+                    try:
+                        driver.refresh()
+                        # 等待页面刷新完成
+                        import time
+                        time.sleep(0.5)
+                    except (WebDriverException, TimeoutException) as e:
+                        self.logger.error(f"页面刷新失败: {e}")
+                        return False
+                    except Exception as e:
+                        self.logger.error(f"页面刷新过程中发生未知异常: {e}")
+                        return False
                     time.sleep(2)
             
             return True

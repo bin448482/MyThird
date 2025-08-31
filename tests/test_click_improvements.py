@@ -96,7 +96,7 @@ async def test_click_improvements():
     
     # 配置流水线参数（只测试第一页，减少测试时间）
     pipeline_config = PipelineConfig(
-        search_keywords=["Python开发"],
+        search_keywords=["AI"],
         search_locations=["上海"],
         max_jobs_per_keyword=20,  # 只测试第一页
         max_pages=1,              # 只测试1页

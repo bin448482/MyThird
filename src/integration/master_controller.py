@@ -96,38 +96,38 @@ class MasterController:
         
         try:
             # 阶段1: 职位提取 - 注释掉用于语义相似度测试
-            # logger.info("跳过阶段1: 职位提取（已注释）")
-            # self.current_stage = "job_extraction"
-            # extraction_result = await self._execute_job_extraction(pipeline_config)
+            logger.info("跳过阶段1: 职位提取（已注释）")
+            self.current_stage = "job_extraction"
+            extraction_result = await self._execute_job_extraction(pipeline_config)
             
-            # if not extraction_result['success']:
-            #     raise PipelineError(f"职位提取失败: {extraction_result.get('error', 'Unknown error')}")
+            if not extraction_result['success']:
+                raise PipelineError(f"职位提取失败: {extraction_result.get('error', 'Unknown error')}")
             
             # 模拟提取结果用于兼容性
-            extraction_result = {
-                'success': True,
-                'total_extracted': 0,
-                'jobs': [],
-                'extraction_time': 0,
-                'keywords_processed': len(pipeline_config.search_keywords)
-            }
+            # extraction_result = {
+            #     'success': True,
+            #     'total_extracted': 0,
+            #     'jobs': [],
+            #     'extraction_time': 0,
+            #     'keywords_processed': len(pipeline_config.search_keywords)
+            # }
             
             # 阶段2: RAG处理 - 注释掉用于匹配阈值测试
-            # logger.info("跳过阶段2: RAG处理（已注释，专注匹配阈值测试）")
-            # self.current_stage = "rag_processing"
-            # rag_result = await self._execute_rag_processing_from_database()
+            logger.info("跳过阶段2: RAG处理（已注释，专注匹配阈值测试）")
+            self.current_stage = "rag_processing"
+            rag_result = await self._execute_rag_processing_from_database()
             
-            # if not rag_result['success']:
-            #     raise PipelineError(f"RAG处理失败: {rag_result.get('error', 'Unknown error')}")
+            if not rag_result['success']:
+                raise PipelineError(f"RAG处理失败: {rag_result.get('error', 'Unknown error')}")
             
-            # # 模拟RAG结果用于兼容性
-            rag_result = {
-                'success': True,
-                'processed_count': 901,  # 使用实际处理的数量
-                'processing_time': 0,
-                'success_rate': 100,
-                'vector_db_stats': {'document_count': 10869}  # 使用实际的文档数量
-            }
+            # # # 模拟RAG结果用于兼容性
+            # rag_result = {
+            #     'success': True,
+            #     'processed_count': 901,  # 使用实际处理的数量
+            #     'processing_time': 0,
+            #     'success_rate': 100,
+            #     'vector_db_stats': {'document_count': 10869}  # 使用实际的文档数量
+            # }
             
             # 阶段3: 简历匹配并保存结果到数据库 - 保留用于语义相似度测试
             logger.info("🎯 开始阶段3: 简历匹配（语义相似度优化测试）")

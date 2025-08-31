@@ -595,6 +595,10 @@ class ContentExtractor:
         try:
             self.logger.info("🎯 开始点击薪资过滤器（3-4万）")
             
+            # 🐛 DEBUG: 记录调用薪资过滤器的上下文
+            self.logger.warning("🐛 DEBUG: _click_salary_filter 被调用")
+            self.logger.warning(f"🐛 DEBUG: 当前URL: {driver.current_url}")
+            
             # 等待页面稳定
             time.sleep(2)
             
@@ -1688,7 +1692,9 @@ class ContentExtractor:
             self._navigate_to_page(driver, search_url)
             
             # 点击薪资过滤器（3-4万）- 每次关键词搜索执行一次
+            self.logger.warning("🐛 DEBUG: 准备点击薪资过滤器（初始搜索）")
             self._click_salary_filter(driver)
+            self.logger.warning("🐛 DEBUG: 薪资过滤器点击完成（初始搜索）")
             
             # 获取配置参数
             max_pages = max_pages or self.search_config.get('strategy', {}).get('max_pages', 5)
@@ -1764,10 +1770,17 @@ class ContentExtractor:
                                 # 登录状态丢失且无法恢复，重新开始抽取流程
                                 raise ContentExtractionError("登录状态丢失，需要重新开始抽取流程")
                         
-                        # 导航到下一页
-                        if not self.page_parser.navigate_to_next_page(driver):
+                        # 🐛 DEBUG: 记录页面跳转前的状态
+                        self.logger.warning(f"🐛 DEBUG: 准备从第 {current_page} 页跳转到第 {current_page + 1} 页")
+                        
+                        # 导航到下一页 - 传递当前页码
+                        if not self.page_parser.navigate_to_next_page(driver, current_page):
                             self.logger.warning("⚠️ 导航到下一页失败，结束提取")
+                            self.logger.warning("🐛 DEBUG: 导航失败可能导致薪资过滤器状态丢失")
                             break
+                        
+                        # 🐛 DEBUG: 检查页面跳转后是否需要重新应用薪资过滤器
+                        self.logger.warning("🐛 DEBUG: 页面跳转完成，检查是否需要重新应用薪资过滤器")
                     
                     current_page += 1
                     

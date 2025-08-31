@@ -64,8 +64,8 @@ async def test_master_controller():
         # search_keywords=["AI", "Python", ".net", "Azure", "数据工程师"],    # 5个关键词
         search_keywords=["AI"],  # 修改为AI，与你的配置一致
         search_locations=["上海"],
-        max_jobs_per_keyword=40,  # 总40个职位（2页 × 20条/页）
-        max_pages=2,              # 测试2页
+        max_jobs_per_keyword=200,  # 总40个职位（2页 × 20条/页）
+        max_pages=3,              # 测试2页
         resume_profile=resume_profile,
         decision_criteria={
             "min_salary": 15000,

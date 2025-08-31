@@ -81,7 +81,7 @@ class BrowserManager:
         chrome_options.add_argument('--disable-extensions')
         chrome_options.add_argument('--disable-plugins')
         # chrome_options.add_argument('--disable-images')  # 注释掉：登录需要显示二维码图片
-        chrome_options.add_argument('--disable-javascript')  # 可选：禁用JS（如果页面不依赖JS）
+        # chrome_options.add_argument('--disable-javascript')  # 注释掉：现代网站需要JavaScript
         chrome_options.add_argument('--disable-gpu')
         chrome_options.add_argument('--disable-software-rasterizer')
         chrome_options.add_argument('--disable-background-timer-throttling')
