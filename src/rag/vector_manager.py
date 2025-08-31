@@ -72,14 +72,23 @@ class ChromaDBManager:
     def _init_embeddings(self) -> HuggingFaceEmbeddings:
         """
         初始化嵌入模型 - 优化中文语义匹配
-        支持多种中文优化的向量模型
+        支持多种中文优化的向量模型和本地模型加载
         """
         embeddings_config = self.config.get('embeddings', {})
         
-        # 优化的中文语义模型选择
+        # 检查是否使用本地模型路径
+        local_model_path = embeddings_config.get('local_model_path')
         model_name = embeddings_config.get('model_name')
         
-        if not model_name:
+        if local_model_path:
+            # 使用本地模型路径
+            if os.path.exists(local_model_path):
+                model_name = local_model_path
+                logger.info(f"使用本地向量模型: {local_model_path}")
+            else:
+                logger.warning(f"本地模型路径不存在: {local_model_path}，回退到在线模型")
+                model_name = model_name or self._select_best_chinese_model(embeddings_config)
+        elif not model_name:
             # 根据配置选择最佳中文模型
             chinese_optimized = embeddings_config.get('chinese_optimized', True)
             if chinese_optimized:
@@ -104,11 +113,24 @@ class ChromaDBManager:
             # 移除 show_progress_bar 参数，避免与 SentenceTransformer.encode() 冲突
         }
         
-        return HuggingFaceEmbeddings(
-            model_name=model_name,
-            model_kwargs=model_kwargs,
-            encode_kwargs=encode_kwargs
-        )
+        # 支持离线模式
+        cache_folder = embeddings_config.get('cache_folder', './models/embeddings')
+        if embeddings_config.get('offline_mode', False):
+            os.makedirs(cache_folder, exist_ok=True)
+            logger.info(f"启用离线模式，模型缓存目录: {cache_folder}")
+            # 直接在构造函数中传递 cache_folder，避免与 model_kwargs 中的参数冲突
+            return HuggingFaceEmbeddings(
+                model_name=model_name,
+                model_kwargs=model_kwargs,
+                encode_kwargs=encode_kwargs,
+                cache_folder=cache_folder
+            )
+        else:
+            return HuggingFaceEmbeddings(
+                model_name=model_name,
+                model_kwargs=model_kwargs,
+                encode_kwargs=encode_kwargs
+            )
     
     def _select_best_chinese_model(self, embeddings_config: Dict) -> str:
         """选择最佳中文语义模型"""

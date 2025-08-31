@@ -1,0 +1,30 @@
+_available_models:
+  m3e-base:
+    model_id: moka-ai/m3e-base
+    path: models\embeddings\m3e-base
+    performance: balanced
+  multilingual-minilm:
+    model_id: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+    path: models\embeddings\paraphrase-multilingual-MiniLM-L12-v2
+    performance: fast
+  text2vec-base-chinese:
+    model_id: shibing624/text2vec-base-chinese
+    path: models\embeddings\text2vec-base-chinese
+    performance: balanced
+_model_info:
+  description: 本地模型配置文件
+  generated_by: download_models.py
+  usage: 将 local_model_path 设置为所需模型的路径
+rag_system:
+  vector_db:
+    embeddings:
+      batch_size: 32
+      cache_folder: models\embeddings
+      chinese_optimized: true
+      device: cpu
+      local_model_path: models\embeddings\text2vec-base-chinese
+      model_name: shibing624/text2vec-base-chinese
+      normalize_embeddings: true
+      offline_mode: true
+      performance_level: balanced
+      trust_remote_code: true

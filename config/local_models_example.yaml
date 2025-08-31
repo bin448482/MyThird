@@ -1,0 +1,61 @@
+# 本地向量模型配置文件
+# 用于离线环境和生产部署
+
+rag_system:
+  vector_db:
+    # === 本地模型配置示例 ===
+    embeddings:
+      # 启用离线模式（避免网络依赖）
+      offline_mode: true
+      
+      # 本地模型路径（选择其中一个）
+      local_model_path: "./models/embeddings/text2vec-base-chinese"
+      # local_model_path: "./models/embeddings/m3e-base"
+      # local_model_path: "./models/embeddings/multilingual-minilm"
+      
+      # 模型缓存目录
+      cache_folder: "./models/embeddings"
+      
+      # 设备配置
+      device: "cpu"  # 改为 "cuda" 如果有GPU
+      normalize_embeddings: true
+      batch_size: 32
+      trust_remote_code: true
+
+# 模型下载和管理命令:
+# 
+# 1. 下载单个模型:
+#    python scripts/download_models.py download text2vec-base-chinese
+#
+# 2. 下载推荐模型集合:
+#    python scripts/download_models.py download-set --performance balanced
+#
+# 3. 列出可用模型:
+#    python scripts/download_models.py list
+#
+# 4. 验证已下载的模型:
+#    python scripts/download_models.py verify ./models/embeddings/text2vec-base-chinese
+#
+# 5. 生成完整配置文件:
+#    python scripts/download_models.py generate-config --output config/local_models.yaml
+
+# 推荐模型选择:
+# 
+# 快速模式 (fast):
+#   - multilingual-minilm: 470MB, 快速推理
+#   - text2vec-base-chinese: 400MB, 中文优化
+#
+# 平衡模式 (balanced, 推荐):
+#   - text2vec-base-chinese: 400MB, 中文语义好
+#   - m3e-base: 400MB, 综合性能佳
+#   - multilingual-minilm: 470MB, 中英文兼顾
+#
+# 高性能模式 (high):
+#   - text2vec-large-chinese: 1.2GB, 最佳中文效果  
+#   - multilingual-mpnet: 1GB, 多语言高精度
+
+# 使用说明:
+# 1. 运行下载脚本获取模型
+# 2. 将此文件内容合并到你的主配置文件
+# 3. 设置正确的 local_model_path
+# 4. 启用 offline_mode: true

@@ -16,6 +16,7 @@
 - 📈 **性能优化**: 智能缓存、批量处理、并发控制
 - 🎯 **简历优化**: AI驱动的简历分析和优化建议
 - 📋 **灵活匹配**: 支持任意用户的通用简历匹配系统
+- 🔌 **离线模型支持**: 支持本地向量模型，无需网络依赖
 
 ## 📚 文档架构
 
@@ -116,6 +117,220 @@ rag_system:
 # 运行数据库迁移（如果需要）
 python migrate_database_for_rag.py
 ```
+
+## 🔌 离线模型配置
+
+本系统支持本地向量模型，实现完全离线运行，无需网络依赖。适用于企业内网、生产环境或网络受限的场景。
+
+### 🚀 一键设置离线环境
+
+最简单的方式是使用自动化设置脚本：
+
+```bash
+# 一键设置离线模型环境（推荐）
+python scripts/setup_local_models.py
+
+# 指定性能级别
+python scripts/setup_local_models.py --performance balanced  # 平衡模式（默认）
+python scripts/setup_local_models.py --performance fast     # 快速模式
+python scripts/setup_local_models.py --performance high     # 高性能模式
+
+# 仅检查环境依赖
+python scripts/setup_local_models.py --check-only
+```
+
+### 📦 可用的离线模型
+
+#### 📊 推荐模型列表
+
+| 模型名称 | 模型ID | 大小 | 性能级别 | 描述 |
+|---------|--------|------|----------|------|
+| **text2vec-base-chinese** | shibing624/text2vec-base-chinese | ~400MB | balanced | 基础中文向量模型，适合中文语义搜索 |
+| **m3e-base** | moka-ai/m3e-base | ~400MB | balanced | M3E中文向量模型，综合性能好 |
+| **multilingual-minilm** | sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 | ~470MB | fast | 轻量级多语言模型，快速推理 |
+| **text2vec-large-chinese** | GanymedeNil/text2vec-large-chinese | ~1.2GB | high | 大型中文向量模型，更高精度 |
+| **multilingual-mpnet** | sentence-transformers/paraphrase-multilingual-mpnet-base-v2 | ~1GB | high | 多语言MPNet模型，支持中英文 |
+
+#### 🎯 性能模式说明
+
+- **fast（快速模式）**: 适合快速原型开发，推理速度快，内存占用小
+- **balanced（平衡模式）**: 推荐生产使用，性能与资源消耗平衡
+- **high（高性能模式）**: 适合对准确性要求高的场景，资源消耗较大
+
+### 🛠️ 手动模型管理
+
+#### 查看和下载模型
+```bash
+# 列出所有可用模型
+python scripts/download_models.py list
+
+# 下载指定模型
+python scripts/download_models.py download text2vec-base-chinese
+python scripts/download_models.py download m3e-base
+
+# 下载推荐模型集合
+python scripts/download_models.py download-set --performance balanced
+
+# 验证已下载的模型
+python scripts/download_models.py verify ./models/embeddings/text2vec-base-chinese
+
+# 生成配置文件模板
+python scripts/download_models.py generate-config --output config/local_models.yaml
+```
+
+#### 清理和管理
+```bash
+# 清理缓存文件
+python scripts/download_models.py cleanup --cache
+
+# 显示磁盘使用情况
+python scripts/download_models.py info --disk-usage
+
+# 更新模型（如果有新版本）
+python scripts/download_models.py update text2vec-base-chinese
+```
+
+### ⚙️ 配置离线模式
+
+#### 自动配置（推荐）
+运行 `python scripts/setup_local_models.py` 会自动更新配置文件。
+
+#### 手动配置
+如果需要手动配置，编辑你的配置文件：
+
+```yaml
+# config/config.yaml 或 config/integration_config.yaml
+rag_system:
+  vector_db:
+    embeddings:
+      # 启用离线模式
+      offline_mode: true
+      
+      # 指定本地模型路径
+      local_model_path: "./models/embeddings/text2vec-base-chinese"
+      
+      # 模型缓存目录
+      cache_folder: "./models/embeddings"
+      
+      # 设备配置
+      device: "cpu"  # 或 "cuda" 如果有GPU
+      normalize_embeddings: true
+      batch_size: 32
+      trust_remote_code: true
+      
+      # 中文优化设置
+      chinese_optimized: true
+      performance_level: "balanced"
+```
+
+### 🧪 验证离线模式
+
+配置完成后，验证离线模式是否正常工作：
+
+```bash
+# 验证系统状态（应该显示离线模式）
+python rag_cli.py status
+
+# 测试向量搜索功能
+python rag_cli.py test --test-search --queries "Python,Java,前端开发"
+
+# 运行完整功能测试
+python rag_cli.py pipeline run --batch-size 10 --dry-run
+```
+
+### 🚨 常见问题解决
+
+#### 1. 模型下载失败
+```bash
+# 问题：网络连接超时
+# 解决：使用代理或镜像源
+export HF_ENDPOINT=https://hf-mirror.com
+python scripts/download_models.py download text2vec-base-chinese
+
+# 或者手动下载后放置到指定目录
+```
+
+#### 2. 权限错误
+```bash
+# 问题：Permission denied
+# 解决：检查目录权限
+chmod -R 755 ./models/
+```
+
+#### 3. 内存不足
+```bash
+# 问题：CUDA out of memory 或 RAM不足
+# 解决：调整配置参数
+# 在配置文件中设置：
+# device: "cpu"
+# batch_size: 16  # 减少批次大小
+```
+
+#### 4. 模型加载失败
+```bash
+# 问题：模型文件损坏或不完整
+# 解决：重新下载模型
+python scripts/download_models.py download text2vec-base-chinese --force
+
+# 验证模型完整性
+python scripts/download_models.py verify ./models/embeddings/text2vec-base-chinese
+```
+
+### 📈 性能优化建议
+
+#### GPU加速（推荐）
+```yaml
+rag_system:
+  vector_db:
+    embeddings:
+      device: "cuda"  # 启用GPU加速
+      batch_size: 64  # GPU可以处理更大批次
+```
+
+#### 内存优化
+```yaml
+rag_system:
+  vector_db:
+    embeddings:
+      device: "cpu"
+      batch_size: 16  # 减少内存使用
+      normalize_embeddings: true  # 启用归一化节省存储
+```
+
+#### 并发优化
+```yaml
+rag_system:
+  processing:
+    parallel_workers: 4  # 并发处理数量
+    chunk_size: 100     # 数据块大小
+```
+
+### 🔄 从在线模式迁移
+
+如果你已经使用在线模式，迁移到离线模式：
+
+```bash
+# 1. 备份现有向量数据库
+cp -r data/test_chroma_db data/test_chroma_db_backup
+
+# 2. 设置离线模型
+python scripts/setup_local_models.py
+
+# 3. 重新处理数据（使用新的离线模型）
+python rag_cli.py pipeline run --force-reprocess
+
+# 4. 验证迁移结果
+python rag_cli.py status
+python rag_cli.py test --test-search
+```
+
+### 💡 使用建议
+
+1. **开发环境**: 使用 `fast` 模式，快速迭代开发
+2. **生产环境**: 使用 `balanced` 模式，性能和资源平衡
+3. **高精度需求**: 使用 `high` 模式，获得最佳效果
+4. **内网部署**: 提前下载所有需要的模型到目标环境
+5. **GPU资源**: 有GPU时优先使用CUDA加速
 
 ## 📋 主要功能
 
@@ -896,8 +1111,8 @@ MIT License
 
 ---
 
-**最后更新**: 2025-08-30  
-**版本**: v3.4.0  
+**最后更新**: 2025-08-31  
+**版本**: v3.4.1  
 **维护者**: Claude Code Assistant
 
 ## 🎯 快速导航
@@ -907,6 +1122,7 @@ MIT License
 - [RAG系统管理](#-rag系统管理) - 核心数据处理
 - [简历匹配系统](#-简历匹配系统) - 智能匹配功能
 - [端到端集成系统](#-端到端集成系统) - 完整自动化流程
+- [离线模型配置](#-离线模型配置) - 本地模型支持，无需网络依赖
 
 ### 📚 文档系统
 - **[CLAUDE.md](CLAUDE.md)** - 项目总览和架构文档

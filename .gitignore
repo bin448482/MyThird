@@ -33,6 +33,7 @@ ENV/
 *.swo
 
 # Project specific
+models/
 reports/
 data/*.db
 logs/*.log
