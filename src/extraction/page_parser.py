@@ -224,9 +224,9 @@ class PageParser:
             return None
     
     def _extract_title_fast(self, job_element) -> str:
-        """快速提取职位标题"""
+        """快速提取职位标题 - JavaScript增强版"""
         try:
-            # 直接尝试最常用的选择器
+            # 方法1: 标准Selenium提取
             for selector in ['.jname a', '.jname', '.job-title']:
                 try:
                     element = job_element.find_element(By.CSS_SELECTOR, selector)
@@ -239,6 +239,64 @@ class PageParser:
                         return title.strip()
                 except:
                     continue
+            
+            # 方法2: JavaScript提取 - 针对动态内容和属性提取
+            try:
+                # 获取driver实例（通过job_element的parent获取）
+                driver = job_element._parent
+                
+                title = driver.execute_script("""
+                    var parentElement = arguments[0];
+                    
+                    // 针对HTML结构：<span class="jname text-cut" title="职位标题">职位标题</span>
+                    var jnameElement = parentElement.querySelector('.jname');
+                    if (jnameElement) {
+                        // 优先使用title属性（最可靠）
+                        var titleAttr = jnameElement.getAttribute('title');
+                        if (titleAttr && titleAttr.trim()) {
+                            return titleAttr.trim();
+                        }
+                        
+                        // 其次使用textContent（处理动态内容）
+                        var textContent = jnameElement.textContent || jnameElement.innerText;
+                        if (textContent && textContent.trim()) {
+                            return textContent.trim();
+                        }
+                        
+                        // 尝试子元素的文本内容
+                        var childLink = jnameElement.querySelector('a');
+                        if (childLink) {
+                            var linkText = childLink.textContent || childLink.innerText || childLink.getAttribute('title');
+                            if (linkText && linkText.trim()) {
+                                return linkText.trim();
+                            }
+                        }
+                    }
+                    
+                    // 备用选择器
+                    var backupSelectors = ['.job-title', '[class*="jname"]', '[title]'];
+                    for (var i = 0; i < backupSelectors.length; i++) {
+                        var element = parentElement.querySelector(backupSelectors[i]);
+                        if (element) {
+                            var text = element.getAttribute('title') ||
+                                      element.textContent ||
+                                      element.innerText;
+                            if (text && text.trim()) {
+                                return text.trim();
+                            }
+                        }
+                    }
+                    
+                    return '';
+                """, job_element)
+                
+                if title and title.strip():
+                    self.logger.debug(f"✅ JavaScript提取职位标题成功: {title}")
+                    return title.strip()
+                    
+            except Exception as e:
+                self.logger.debug(f"JavaScript提取职位标题失败: {e}")
+            
             return "未知职位"
         except:
             return "未知职位"
@@ -257,9 +315,9 @@ class PageParser:
             return default
     
     def _extract_multiple_fields_fast(self, job_element) -> Dict[str, str]:
-        """超高性能批量提取 - 一次性查找所有元素"""
+        """超高性能批量提取 - JavaScript增强版"""
         try:
-            # 一次性查找所有可能的元素，避免重复DOM查询
+            # 方法1: 标准Selenium提取
             all_elements = job_element.find_elements(By.CSS_SELECTOR,
                 '.cname a, .cname, .area, .sal, .experience, .education')
             
@@ -298,6 +356,95 @@ class PageParser:
                         
                 except:
                     continue
+            
+            # 方法2: JavaScript提取 - 处理未提取到的字段
+            try:
+                # 检查哪些字段还是默认值，需要JavaScript提取
+                missing_fields = [k for k, v in results.items() if v.startswith("未知") or v.startswith("薪资面议") or v.startswith("经验不限") or v.startswith("学历不限")]
+                
+                if missing_fields:
+                    driver = job_element._parent
+                    js_results = driver.execute_script("""
+                        var parentElement = arguments[0];
+                        var results = {};
+                        
+                        // 提取公司名称
+                        var companySelectors = ['.cname a', '.cname', '[class*="cname"]', '.company'];
+                        for (var i = 0; i < companySelectors.length; i++) {
+                            var element = parentElement.querySelector(companySelectors[i]);
+                            if (element) {
+                                var text = element.textContent || element.innerText || element.getAttribute('title');
+                                if (text && text.trim()) {
+                                    results.company = text.trim();
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 提取地点
+                        var locationSelectors = ['.area', '[class*="area"]', '.location'];
+                        for (var i = 0; i < locationSelectors.length; i++) {
+                            var element = parentElement.querySelector(locationSelectors[i]);
+                            if (element) {
+                                var text = element.textContent || element.innerText || element.getAttribute('title');
+                                if (text && text.trim()) {
+                                    results.location = text.trim();
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 提取薪资
+                        var salarySelectors = ['.sal', '[class*="sal"]', '.salary'];
+                        for (var i = 0; i < salarySelectors.length; i++) {
+                            var element = parentElement.querySelector(salarySelectors[i]);
+                            if (element) {
+                                var text = element.textContent || element.innerText || element.getAttribute('title');
+                                if (text && text.trim()) {
+                                    results.salary = text.trim();
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 提取经验要求
+                        var expSelectors = ['.experience', '[class*="experience"]', '.exp'];
+                        for (var i = 0; i < expSelectors.length; i++) {
+                            var element = parentElement.querySelector(expSelectors[i]);
+                            if (element) {
+                                var text = element.textContent || element.innerText || element.getAttribute('title');
+                                if (text && text.trim()) {
+                                    results.experience = text.trim();
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 提取学历要求
+                        var eduSelectors = ['.education', '[class*="education"]', '.edu'];
+                        for (var i = 0; i < eduSelectors.length; i++) {
+                            var element = parentElement.querySelector(eduSelectors[i]);
+                            if (element) {
+                                var text = element.textContent || element.innerText || element.getAttribute('title');
+                                if (text && text.trim()) {
+                                    results.education = text.trim();
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        return results;
+                    """, job_element)
+                    
+                    # 更新结果，只覆盖成功提取的字段
+                    if js_results:
+                        for field in missing_fields:
+                            if field in js_results and js_results[field]:
+                                results[field] = js_results[field]
+                                self.logger.debug(f"✅ JavaScript提取{field}成功: {js_results[field]}")
+                        
+            except Exception as e:
+                self.logger.debug(f"JavaScript批量提取失败: {e}")
             
             return results
             
@@ -567,12 +714,13 @@ class PageParser:
             self.logger.error(f"检查下一页失败: {e}")
             return False
     
-    def navigate_to_next_page(self, driver: webdriver.Chrome) -> bool:
+    def navigate_to_next_page(self, driver: webdriver.Chrome, current_page: Optional[int] = None) -> bool:
         """
         导航到下一页 - 增强版AJAX检测和重试恢复机制
         
         Args:
             driver: WebDriver实例
+            current_page: 当前页码（可选），如果提供则使用，否则自动检测
             
         Returns:
             是否成功导航到下一页
@@ -581,8 +729,14 @@ class PageParser:
             self.logger.info("🔄 尝试导航到下一页")
             
             # 获取当前页码信息
-            current_page_info = self.get_current_page_info(driver)
-            current_page_number = current_page_info.get('current_page', 1)
+            if current_page is not None:
+                current_page_number = current_page
+                self.logger.info(f"📄 使用传入的当前页码: {current_page_number}")
+            else:
+                current_page_info = self.get_current_page_info(driver)
+                current_page_number = current_page_info.get('current_page', 1)
+                self.logger.info(f"📄 检测到的当前页码: {current_page_number}")
+            
             target_page_number = current_page_number + 1
             
             self.logger.info(f"📄 当前页码: {current_page_number}, 目标页码: {target_page_number}")
@@ -592,7 +746,7 @@ class PageParser:
             current_page_signature = self._get_page_content_signature(driver)
             
             # 第一次尝试：标准下一页导航
-            if self._attempt_next_page_click(driver, current_url, current_page_signature):
+            if self._attempt_next_page_click(driver, current_url, current_page_signature, current_page_number):
                 self.logger.info("✅ 标准下一页导航成功")
                 return True
             
@@ -609,7 +763,7 @@ class PageParser:
             self.logger.error(f"❌ 导航到下一页失败: {e}")
             return False
     
-    def _attempt_next_page_click(self, driver: webdriver.Chrome, current_url: str, current_page_signature: str) -> bool:
+    def _attempt_next_page_click(self, driver: webdriver.Chrome, current_url: str, current_page_signature: str, current_page_number: int) -> bool:
         """
         尝试点击下一页按钮
         
@@ -617,12 +771,16 @@ class PageParser:
             driver: WebDriver实例
             current_url: 当前URL
             current_page_signature: 当前页面签名
+            current_page_number: 当前页码
             
         Returns:
             是否成功
         """
         try:
-            # 尝试多种下一页按钮选择器
+            target_page = current_page_number + 1
+            self.logger.info(f"🎯 尝试从第 {current_page_number} 页导航到第 {target_page} 页")
+            
+            # 方法1: 优先尝试下一页按钮（最自然的导航方式）
             next_page_selectors = [
                 'button.btn-next',      # 51job主要选择器
                 '.btn-next',            # 备用选择器
@@ -640,26 +798,59 @@ class PageParser:
                         disabled_attr = next_button.get_attribute('disabled')
                         
                         if 'disabled' not in classes.lower() and not disabled_attr:
-                            self.logger.info(f"点击下一页按钮: {selector}")
+                            self.logger.info(f"➡️ 点击下一页按钮: {selector}")
                             
                             # 滚动到按钮位置
                             driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", next_button)
-                            time.sleep(0.3)  # 短暂等待滚动完成
+                            time.sleep(0.3)
                             
                             # 点击下一页按钮
                             ActionChains(driver).click(next_button).perform()
                             
                             # 验证页面跳转是否成功
-                            if self._verify_page_navigation(driver, current_url, current_page_signature):
+                            if self._verify_page_navigation(driver, current_url, current_page_signature, target_page):
+                                self.logger.info(f"✅ 下一页按钮点击成功，已到达第 {target_page} 页")
                                 return True
                     
                 except NoSuchElementException:
                     continue
                 except Exception as e:
-                    self.logger.debug(f"点击下一页按钮失败 {selector}: {e}")
+                    self.logger.debug(f"下一页按钮点击失败 {selector}: {e}")
                     continue
             
-            self.logger.warning("⚠️ 未找到可用的下一页按钮")
+            # 方法2: 下一页按钮失败后，尝试直接点击目标页码（备选方案）
+            self.logger.warning("⚠️ 下一页按钮不可用，尝试直接页码点击")
+            try:
+                # 使用JavaScript查找目标页码链接
+                page_link = driver.execute_script(f"""
+                    var links = document.querySelectorAll('.pagination a, .page-item a, .pager a');
+                    for (var i = 0; i < links.length; i++) {{
+                        if (links[i].textContent.trim() === '{target_page}') {{
+                            return links[i];
+                        }}
+                    }}
+                    return null;
+                """)
+                
+                if page_link:
+                    self.logger.info(f"🔢 直接点击页码 {target_page}")
+                    
+                    # 滚动到页码位置
+                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", page_link)
+                    time.sleep(0.5)
+                    
+                    # 点击页码
+                    ActionChains(driver).click(page_link).perform()
+                    
+                    # 验证页面跳转是否成功
+                    if self._verify_page_navigation(driver, current_url, current_page_signature, target_page):
+                        self.logger.info(f"✅ 直接页码点击成功，已到达第 {target_page} 页")
+                        return True
+                        
+            except Exception as e:
+                self.logger.debug(f"直接页码点击失败: {e}")
+            
+            self.logger.warning("⚠️ 所有导航方法都失败了")
             return False
             
         except Exception as e:
@@ -687,10 +878,18 @@ class PageParser:
             # 等待页面加载
             time.sleep(3)
             
+            # 🔧 FIX: 页面刷新后重新应用薪资过滤器
+            self.logger.info("🔧 FIX: 页面刷新后重新应用薪资过滤器")
+            self._reapply_salary_filter(driver)
+            
             # 验证是否回到第1页
             page_info = self.get_current_page_info(driver)
             current_page = page_info.get('current_page', 1)
             self.logger.info(f"📄 刷新后当前页码: {current_page}")
+            
+            # 🐛 DEBUG: 检查页面刷新后的状态
+            self.logger.warning("🐛 DEBUG: 页面刷新后需要重新应用薪资过滤器")
+            self.logger.warning("🐛 DEBUG: 当前页面URL: " + driver.current_url)
             
             # 如果目标页码是1，直接返回成功
             if target_page_number <= 1:
@@ -722,6 +921,10 @@ class PageParser:
             current_page_info = self.get_current_page_info(driver)
             current_page = current_page_info.get('current_page', 1)
             
+            # 🐛 DEBUG: 详细记录页码检测信息
+            self.logger.warning(f"🐛 DEBUG: 当前页码检测结果: {current_page_info}")
+            self.logger.warning(f"🐛 DEBUG: 当前URL: {driver.current_url}")
+            
             # 如果已经在目标页，直接返回成功
             if current_page == target_page:
                 self.logger.info(f"✅ 已在目标页 {target_page}")
@@ -738,6 +941,10 @@ class PageParser:
             for step in range(current_page, target_page):
                 self.logger.info(f"📄 导航到第 {step + 1} 页...")
                 
+                # 🐛 DEBUG: 记录导航前状态
+                pre_nav_url = driver.current_url
+                self.logger.warning(f"🐛 DEBUG: 导航前URL: {pre_nav_url}")
+                
                 # 尝试点击下一页
                 if not self._attempt_single_next_page_click(driver):
                     self.logger.error(f"❌ 导航到第 {step + 1} 页失败")
@@ -748,8 +955,15 @@ class PageParser:
                 page_info = self.get_current_page_info(driver)
                 actual_page = page_info.get('current_page', 1)
                 
+                # 🐛 DEBUG: 记录导航后状态
+                post_nav_url = driver.current_url
+                self.logger.warning(f"🐛 DEBUG: 导航后URL: {post_nav_url}")
+                self.logger.warning(f"🐛 DEBUG: URL是否变化: {pre_nav_url != post_nav_url}")
+                self.logger.warning(f"🐛 DEBUG: 页码检测结果: {page_info}")
+                
                 if actual_page != step + 1:
                     self.logger.error(f"❌ 页码验证失败，期望第 {step + 1} 页，实际第 {actual_page} 页")
+                    self.logger.error(f"🐛 DEBUG: 可能的原因 - 页码检测逻辑错误或页面未正确跳转")
                     return False
                 
                 self.logger.info(f"✅ 成功到达第 {actual_page} 页")
@@ -914,7 +1128,7 @@ class PageParser:
             self.logger.debug(f"获取页面签名失败: {e}")
             return ""
     
-    def _verify_page_navigation(self, driver: webdriver.Chrome, original_url: str, original_signature: str) -> bool:
+    def _verify_page_navigation(self, driver: webdriver.Chrome, original_url: str, original_signature: str, expected_page: Optional[int] = None) -> bool:
         """
         验证页面导航是否成功
         
@@ -922,6 +1136,7 @@ class PageParser:
             driver: WebDriver实例
             original_url: 原始URL
             original_signature: 原始页面签名
+            expected_page: 期望的目标页码
             
         Returns:
             是否成功导航
@@ -933,6 +1148,18 @@ class PageParser:
             try:
                 # 等待一小段时间让页面更新
                 time.sleep(wait_interval)
+                
+                # 优先检查页码是否正确（如果提供了expected_page）
+                if expected_page is not None:
+                    current_page_info = self.get_current_page_info(driver)
+                    current_page = current_page_info.get('current_page', 1)
+                    
+                    if current_page == expected_page:
+                        self.logger.info(f"✅ 页码验证成功，已到达第 {expected_page} 页")
+                        return True
+                    elif attempt < max_attempts - 1:  # 不是最后一次尝试
+                        self.logger.debug(f"页码检测为 {current_page}，期望 {expected_page}，继续等待... (尝试 {attempt + 1}/{max_attempts})")
+                        continue
                 
                 # 检查URL是否变化
                 current_url = driver.current_url
@@ -1018,7 +1245,7 @@ class PageParser:
     
     def get_current_page_info(self, driver: webdriver.Chrome) -> Dict[str, Any]:
         """
-        获取当前页面信息
+        获取当前页面信息（增强版页码检测）
         
         Args:
             driver: WebDriver实例
@@ -1036,98 +1263,142 @@ class PageParser:
                 'has_next': self.has_next_page(driver)
             }
             
-            # 尝试从URL中提取页码
-            import re
-            from urllib.parse import urlparse, parse_qs
-            
-            parsed_url = urlparse(driver.current_url)
-            query_params = parse_qs(parsed_url.query)
-            
-            # 常见的页码参数
-            page_params = ['page', 'p', 'pageNum', 'pageIndex', 'currentPage']
-            for param in page_params:
-                if param in query_params:
-                    try:
-                        page_info['current_page'] = int(query_params[param][0])
-                        break
-                    except (ValueError, IndexError):
-                        continue
-            
-            # 尝试从页面元素中获取页码信息 - 针对51job优化
-            try:
-                # 51job的页码选择器 - 尝试多种可能的选择器
-                page_selectors = [
-                    '.pagination .current',      # 当前页高亮
-                    '.pagination .active',       # 激活页面
-                    '.page-current',             # 当前页
-                    '.current-page',             # 当前页
-                    '.pagination .on',           # 51job可能使用的类名
-                    '.page-num.current',         # 页码当前状态
-                    '.pager .current',           # 分页器当前页
-                    '.page-item.active span',    # Bootstrap样式
-                    '.pagination li.active span' # 另一种Bootstrap样式
-                ]
-                
-                for selector in page_selectors:
-                    try:
-                        page_element = driver.find_element(By.CSS_SELECTOR, selector)
-                        page_text = page_element.text.strip()
-                        if page_text.isdigit():
-                            page_info['current_page'] = int(page_text)
-                            self.logger.debug(f"通过选择器 '{selector}' 检测到当前页码: {page_text}")
-                            break
-                    except:
-                        continue
-                
-                # 如果上述方法都失败，尝试JavaScript获取页码
-                if page_info['current_page'] == 1:
-                    try:
-                        current_page_js = driver.execute_script("""
-                            // 尝试多种方式获取当前页码
-                            var selectors = [
-                                '.pagination .current',
-                                '.pagination .active',
-                                '.page-current',
-                                '.current-page',
-                                '.pagination .on',
-                                '.page-num.current'
-                            ];
-                            
-                            for (var i = 0; i < selectors.length; i++) {
-                                var element = document.querySelector(selectors[i]);
-                                if (element && element.textContent) {
-                                    var pageNum = parseInt(element.textContent.trim());
-                                    if (!isNaN(pageNum) && pageNum > 0) {
-                                        return pageNum;
-                                    }
-                                }
-                            }
-                            
-                            // 尝试从URL参数中获取页码
-                            var urlParams = new URLSearchParams(window.location.search);
-                            var pageParam = urlParams.get('page') || urlParams.get('p') || urlParams.get('pageNum');
-                            if (pageParam) {
-                                var pageNum = parseInt(pageParam);
-                                if (!isNaN(pageNum) && pageNum > 0) {
-                                    return pageNum;
-                                }
-                            }
-                            
-                            return 1;
-                        """)
-                        
-                        if current_page_js and current_page_js > 1:
-                            page_info['current_page'] = current_page_js
-                            self.logger.debug(f"通过JavaScript检测到当前页码: {current_page_js}")
-                            
-                    except Exception as e:
-                        self.logger.debug(f"JavaScript页码检测失败: {e}")
-                        
-            except Exception as e:
-                self.logger.debug(f"页码检测失败: {e}")
+            # 🔧 FIX: 增强页码检测逻辑
+            detected_page = self._detect_current_page_enhanced(driver)
+            page_info['current_page'] = detected_page
             
             return page_info
             
         except Exception as e:
             self.logger.error(f"获取页面信息失败: {e}")
             return {'current_page': 1, 'has_next': False}
+    
+    def _detect_current_page_enhanced(self, driver: webdriver.Chrome) -> int:
+        """
+        简化版页码检测方法 - 专注于两个主要检测方式
+        
+        Args:
+            driver: WebDriver实例
+            
+        Returns:
+            当前页码
+        """
+        try:
+            self.logger.debug("🔍 开始简化页码检测")
+            
+            # 方法1: 检测高亮页码元素 <li class="number active">2</li>
+            try:
+                active_page_element = driver.find_element(By.CSS_SELECTOR, 'li.number.active')
+                page_text = active_page_element.text.strip()
+                if page_text.isdigit():
+                    page_num = int(page_text)
+                    self.logger.info(f"✅ 从高亮元素检测到页码: {page_num}")
+                    return page_num
+            except Exception as e:
+                self.logger.debug(f"高亮元素检测失败: {e}")
+            
+            # 方法2: 检测输入框值 <input id="jump_page" type="number">
+            try:
+                jump_page_input = driver.find_element(By.CSS_SELECTOR, 'input#jump_page[type="number"]')
+                input_value = jump_page_input.get_attribute('value')
+                if input_value and input_value.isdigit():
+                    page_num = int(input_value)
+                    self.logger.info(f"✅ 从输入框检测到页码: {page_num}")
+                    return page_num
+                else:
+                    # 尝试使用JavaScript获取输入框值
+                    js_value = driver.execute_script("return document.getElementById('jump_page').value;")
+                    if js_value and str(js_value).isdigit():
+                        page_num = int(js_value)
+                        self.logger.info(f"✅ 从输入框(JS)检测到页码: {page_num}")
+                        return page_num
+            except Exception as e:
+                self.logger.debug(f"输入框检测失败: {e}")
+            
+            # 备用方法: URL参数检测
+            try:
+                from urllib.parse import urlparse, parse_qs
+                parsed_url = urlparse(driver.current_url)
+                query_params = parse_qs(parsed_url.query)
+                
+                for param in ['page', 'p', 'pageNum']:
+                    if param in query_params:
+                        page_num = int(query_params[param][0])
+                        if page_num > 0:
+                            self.logger.info(f"✅ 从URL参数检测到页码: {page_num}")
+                            return page_num
+            except Exception as e:
+                self.logger.debug(f"URL参数检测失败: {e}")
+            
+            self.logger.warning("⚠️ 所有检测方法失败，返回默认页码1")
+            return 1
+            
+        except Exception as e:
+            self.logger.error(f"❌ 页码检测异常: {e}")
+            return 1
+    
+    def _reapply_salary_filter(self, driver: webdriver.Chrome) -> None:
+        """
+        重新应用薪资过滤器（3-4万）
+        
+        Args:
+            driver: WebDriver实例
+        """
+        try:
+            self.logger.info("🔧 重新应用薪资过滤器（3-4万）")
+            
+            # 等待页面稳定
+            time.sleep(2)
+            
+            # 使用JavaScript查找包含"3-4万"文本的元素
+            salary_element = None
+            
+            try:
+                salary_element = driver.execute_script("""
+                    // 查找所有包含"3-4万"文本的元素
+                    var elements = document.querySelectorAll('*');
+                    for (var i = 0; i < elements.length; i++) {
+                        var element = elements[i];
+                        if (element.textContent && element.textContent.includes('3-4万')) {
+                            // 优先选择链接元素
+                            if (element.tagName === 'A' || element.closest('a')) {
+                                return element.tagName === 'A' ? element : element.closest('a');
+                            }
+                        }
+                    }
+                    
+                    // 如果没找到链接，返回第一个包含文本的元素
+                    for (var i = 0; i < elements.length; i++) {
+                        var element = elements[i];
+                        if (element.textContent && element.textContent.includes('3-4万')) {
+                            return element;
+                        }
+                    }
+                    return null;
+                """)
+                
+                if salary_element:
+                    self.logger.info("✅ 找到薪资过滤器元素，准备点击")
+                    
+                    # 滚动到元素位置
+                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", salary_element)
+                    time.sleep(1)
+                    
+                    # 尝试点击
+                    try:
+                        salary_element.click()
+                        self.logger.info("✅ 薪资过滤器重新应用成功")
+                        time.sleep(3)  # 等待过滤器生效
+                    except:
+                        # 尝试JavaScript点击
+                        driver.execute_script("arguments[0].click();", salary_element)
+                        self.logger.info("✅ 薪资过滤器重新应用成功（JavaScript点击）")
+                        time.sleep(3)
+                else:
+                    self.logger.warning("⚠️ 未找到薪资过滤器元素")
+                    
+            except Exception as e:
+                self.logger.warning(f"⚠️ 重新应用薪资过滤器失败: {e}")
+                
+        except Exception as e:
+            self.logger.error(f"❌ 重新应用薪资过滤器时出错: {e}")
