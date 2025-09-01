@@ -62,10 +62,10 @@ async def test_master_controller():
     # 配置流水线参数
     pipeline_config = PipelineConfig(
         # search_keywords=["AI", "Python", ".net", "Azure", "数据工程师"],    # 5个关键词
-        search_keywords=["AI"],  # 修改为AI，与你的配置一致
+        search_keywords=["AI","数据工程师","Python"],  # 修改为AI，与你的配置一致
         search_locations=["上海"],
-        max_jobs_per_keyword=200,  # 总40个职位（2页 × 20条/页）
-        max_pages=3,              # 测试2页
+        max_jobs_per_keyword=20,  # 总40个职位（2页 × 20条/页）
+        max_pages=1,              # 测试2页
         resume_profile=resume_profile,
         decision_criteria={
             "min_salary": 15000,

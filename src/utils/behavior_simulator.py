@@ -52,7 +52,7 @@ class BehaviorSimulator:
     
     def simulate_human_mouse_move(self, element, offset: Tuple[int, int] = (0, 0)) -> None:
         """
-        模拟人类鼠标移动
+        模拟人类鼠标移动（修复版本）
         
         Args:
             element: 目标元素
@@ -62,46 +62,35 @@ class BehaviorSimulator:
             return
         
         try:
+            # 获取浏览器窗口大小
+            viewport_width = self.driver.execute_script("return window.innerWidth")
+            viewport_height = self.driver.execute_script("return window.innerHeight")
+            
+            # 确保元素在视口内
+            element_location = element.location_once_scrolled_into_view
+            element_size = element.size
+            
+            # 计算安全的目标位置（确保在视口范围内）
+            target_x = max(10, min(viewport_width - 10,
+                                  element_location['x'] + element_size['width'] // 2 + offset[0]))
+            target_y = max(10, min(viewport_height - 10,
+                                  element_location['y'] + element_size['height'] // 2 + offset[1]))
+            
+            # 使用简单安全的移动方式
             actions = ActionChains(self.driver)
-            
-            # 获取当前鼠标位置（模拟）
-            current_x = random.randint(0, 1920)
-            current_y = random.randint(0, 1080)
-            
-            # 获取目标位置
-            target_x = element.location['x'] + element.size['width'] // 2 + offset[0]
-            target_y = element.location['y'] + element.size['height'] // 2 + offset[1]
-            
-            # 计算移动路径（贝塞尔曲线模拟）
-            steps = random.randint(5, 15)
-            for i in range(steps):
-                progress = i / steps
-                # 添加一些随机性和曲线
-                curve_offset_x = random.randint(-10, 10) * (1 - progress)
-                curve_offset_y = random.randint(-10, 10) * (1 - progress)
-                
-                intermediate_x = current_x + (target_x - current_x) * progress + curve_offset_x
-                intermediate_y = current_y + (target_y - current_y) * progress + curve_offset_y
-                
-                actions.move_by_offset(
-                    intermediate_x - current_x, 
-                    intermediate_y - current_y
-                )
-                current_x, current_y = intermediate_x, intermediate_y
-                
-                # 随机暂停
-                if random.random() < 0.3:
-                    actions.pause(random.uniform(0.01, 0.05))
-            
-            # 最终移动到目标
             actions.move_to_element_with_offset(element, offset[0], offset[1])
             actions.perform()
             
-            # 短暂停留 - COMMENTED FOR SPEED
-            # time.sleep(random.uniform(0.1, 0.3))
+            self.logger.debug(f"鼠标移动到元素: ({target_x}, {target_y})")
             
         except Exception as e:
             self.logger.warning(f"模拟鼠标移动失败: {e}")
+            # 降级处理：使用最简单的移动方式
+            try:
+                ActionChains(self.driver).move_to_element(element).perform()
+                self.logger.debug("使用降级鼠标移动成功")
+            except Exception as fallback_error:
+                self.logger.debug(f"降级鼠标移动也失败: {fallback_error}")
     
     def simulate_scroll(self, direction: str = 'down', distance: int = None) -> None:
         """

@@ -74,6 +74,10 @@ integration_system:
     max_submissions_per_day: 50
     retry_delay: 10
     submission_delay: 5
+  anti_bot:
+    mouse_simulation: false
+    scroll_simulation: true
+    random_delay: true
   data_bridge:
     cache_ttl: 3600
     data_retention_days: 30
