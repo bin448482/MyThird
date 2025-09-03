@@ -1775,9 +1775,18 @@ class ContentExtractor:
                         
                         # 导航到下一页 - 传递当前页码
                         if not self.page_parser.navigate_to_next_page(driver, current_page):
-                            self.logger.warning("⚠️ 导航到下一页失败，结束提取")
-                            self.logger.warning("🐛 DEBUG: 导航失败可能导致薪资过滤器状态丢失")
-                            break
+                            # 尝试恢复到目标页面
+                            target_page = current_page + 1
+                            self.logger.warning(f"⚠️ 导航到第 {target_page} 页失败，尝试恢复")
+                            
+                            # 使用页面解析器的恢复方法
+                            if not self.page_parser._recover_to_target_page(driver, target_page):
+                                self.logger.warning(f"⚠️ 第 {target_page} 页恢复失败，结束提取")
+                                self.logger.warning("🐛 DEBUG: 导航失败且恢复失败，可能导致薪资过滤器状态丢失")
+                                break
+                            
+                            # 如果恢复成功，继续处理
+                            self.logger.info(f"✅ 成功恢复到第 {target_page} 页")
                         
                         # 🐛 DEBUG: 检查页面跳转后是否需要重新应用薪资过滤器
                         self.logger.warning("🐛 DEBUG: 页面跳转完成，检查是否需要重新应用薪资过滤器")

@@ -94,6 +94,10 @@ class MasterController:
         start_time = datetime.now()
         logger.info(f"开始执行流水线 {self.pipeline_id}")
         
+        # 🔍 DEBUG: 记录接收到的关键词
+        logger.info(f"🔍 DEBUG: MasterController 接收到的关键词: {pipeline_config.search_keywords}")
+        logger.info(f"🔍 DEBUG: 关键词类型: {type(pipeline_config.search_keywords)}")
+        
         try:
             # 阶段1: 职位提取 - 注释掉用于语义相似度测试
             logger.info("跳过阶段1: 职位提取（已注释）")
@@ -197,8 +201,12 @@ class MasterController:
         try:
             combined_results = []
             
+            # 🔍 DEBUG: 在提取阶段再次确认关键词
+            logger.info(f"🔍 DEBUG: 提取阶段接收到的关键词列表: {pipeline_config.search_keywords}")
+            
             # 顺序执行每个关键词的提取任务（避免Selenium并发问题）
             for i, keyword in enumerate(pipeline_config.search_keywords, 1):
+                logger.info(f"🔍 DEBUG: 正在处理第 {i} 个关键词: '{keyword}' (类型: {type(keyword)})")
                 logger.info(f"开始处理关键词 {i}/{len(pipeline_config.search_keywords)}: '{keyword}'")
                 
                 try:

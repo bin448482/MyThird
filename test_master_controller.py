@@ -62,10 +62,11 @@ async def test_master_controller():
     # 配置流水线参数
     pipeline_config = PipelineConfig(
         # search_keywords=["AI", "Python", ".net", "Azure", "数据工程师"],    # 5个关键词
-        search_keywords=["AI","数据工程师","Python"],  # 修改为AI，与你的配置一致
+        # search_keywords=["AI","数据工程师","Python",".net"],  # 修改为AI，与你的配置一致
+        search_keywords=["AI"],  # 修改为AI，与你的配置一致
         search_locations=["上海"],
-        max_jobs_per_keyword=20,  # 总40个职位（2页 × 20条/页）
-        max_pages=1,              # 测试2页
+        max_jobs_per_keyword=40,  # 总40个职位（2页 × 20条/页）
+        max_pages=2,              # 测试2页
         resume_profile=resume_profile,
         decision_criteria={
             "min_salary": 15000,
@@ -76,6 +77,11 @@ async def test_master_controller():
             "max_submissions": 5
         }
     )
+    
+    # 🔍 DEBUG: 添加调试日志确认实际使用的关键词
+    print(f"🔍 DEBUG: 配置的关键词: {pipeline_config.search_keywords}")
+    print(f"🔍 DEBUG: 关键词类型: {type(pipeline_config.search_keywords)}")
+    print(f"🔍 DEBUG: 关键词长度: {len(pipeline_config.search_keywords)}")
     
     print(f"📊 测试参数:")
     print(f"   关键词: {pipeline_config.search_keywords}")

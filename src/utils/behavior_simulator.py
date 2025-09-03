@@ -58,11 +58,12 @@ class BehaviorSimulator:
             element: 目标元素
             offset: 偏移量 (x, y)
         """
+        
         if not self.anti_bot_config.get('mouse_simulation', True):
             return
         
         try:
-            # 获取浏览器窗口大小
+            # 获取浏览器窗口的实际大小
             viewport_width = self.driver.execute_script("return window.innerWidth")
             viewport_height = self.driver.execute_script("return window.innerHeight")
             
@@ -70,13 +71,13 @@ class BehaviorSimulator:
             element_location = element.location_once_scrolled_into_view
             element_size = element.size
             
-            # 计算安全的目标位置（确保在视口范围内）
-            target_x = max(10, min(viewport_width - 10,
-                                  element_location['x'] + element_size['width'] // 2 + offset[0]))
-            target_y = max(10, min(viewport_height - 10,
-                                  element_location['y'] + element_size['height'] // 2 + offset[1]))
+            # 计算目标位置（确保在视口范围内）
+            target_x = max(0, min(viewport_width - 10, 
+                                element_location['x'] + element_size['width'] // 2 + offset[0]))
+            target_y = max(0, min(viewport_height - 10, 
+                                element_location['y'] + element_size['height'] // 2 + offset[1]))
             
-            # 使用简单安全的移动方式
+            # 使用简单的直接移动，避免复杂的路径计算
             actions = ActionChains(self.driver)
             actions.move_to_element_with_offset(element, offset[0], offset[1])
             actions.perform()
@@ -85,10 +86,11 @@ class BehaviorSimulator:
             
         except Exception as e:
             self.logger.warning(f"模拟鼠标移动失败: {e}")
-            # 降级处理：使用最简单的移动方式
+            # 降级到简单的元素移动
             try:
-                ActionChains(self.driver).move_to_element(element).perform()
-                self.logger.debug("使用降级鼠标移动成功")
+                actions = ActionChains(self.driver)
+                actions.move_to_element(element)
+                actions.perform()
             except Exception as fallback_error:
                 self.logger.debug(f"降级鼠标移动也失败: {fallback_error}")
     

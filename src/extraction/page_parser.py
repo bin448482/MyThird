@@ -750,12 +750,6 @@ class PageParser:
                 self.logger.info("✅ 标准下一页导航成功")
                 return True
             
-            # 第二次尝试：刷新页面并恢复到目标页码
-            self.logger.warning("⚠️ 标准下一页导航失败，尝试刷新页面恢复")
-            if self._recover_to_target_page(driver, target_page_number):
-                self.logger.info("✅ 页面刷新恢复成功")
-                return True
-            
             self.logger.error("❌ 所有导航尝试都失败")
             return False
             
@@ -1292,7 +1286,7 @@ class PageParser:
                 page_text = active_page_element.text.strip()
                 if page_text.isdigit():
                     page_num = int(page_text)
-                    self.logger.info(f"✅ 从高亮元素检测到页码: {page_num}")
+                    self.logger.debug(f"✅ 从高亮元素检测到页码: {page_num}")
                     return page_num
             except Exception as e:
                 self.logger.debug(f"高亮元素检测失败: {e}")
