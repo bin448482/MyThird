@@ -23,10 +23,11 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PipelineConfig:
     """流水线配置"""
-    search_keywords: List[str]
-    search_locations: List[str] = None
-    max_jobs_per_keyword: int = 40  # 总40个职位
-    max_pages: int = 2              # 测试2页
+    # 支持从代码传入，也可从配置文件读取；使用 None 表示未在代码中显式指定
+    search_keywords: Optional[List[str]] = None
+    search_locations: Optional[List[str]] = None
+    max_jobs_per_keyword: Optional[int] = None
+    max_pages: Optional[int] = None
     resume_profile: Dict[str, Any] = None
     decision_criteria: Dict[str, Any] = None
     submission_config: Dict[str, Any] = None
@@ -93,10 +94,97 @@ class MasterController:
         """执行完整的端到端流水线"""
         start_time = datetime.now()
         logger.info(f"开始执行流水线 {self.pipeline_id}")
+        # 🔍 DEBUG: 记录接收到的关键词（支持优先级：PipelineConfig > config 文件）
+        logger.info(f"🔍 DEBUG: pipeline_config raw keywords: {pipeline_config.search_keywords} (type={type(pipeline_config.search_keywords)})")
+        logger.info(f"🔍 DEBUG: pipeline_config raw search_locations: {pipeline_config.search_locations} (type={type(pipeline_config.search_locations)})")
+        logger.info(f"🔍 DEBUG: pipeline_config raw max_jobs_per_keyword: {pipeline_config.max_jobs_per_keyword}")
+        logger.info(f"🔍 DEBUG: pipeline_config raw max_pages: {pipeline_config.max_pages}")
         
-        # 🔍 DEBUG: 记录接收到的关键词
-        logger.info(f"🔍 DEBUG: MasterController 接收到的关键词: {pipeline_config.search_keywords}")
-        logger.info(f"🔍 DEBUG: 关键词类型: {type(pipeline_config.search_keywords)}")
+        # 解析并规范化关键词来源：
+        # 优先使用代码中显式传入的 pipeline_config 字段；如果为 None 或空，则从 integration_config.yaml 中读取。
+        def _flatten_keywords(raw_keywords):
+            """把 config 中的 keywords（可能是 dict 的 priority_* 或 list）规整为平铺的 List[str]"""
+            if raw_keywords is None:
+                return None
+            if isinstance(raw_keywords, list):
+                return raw_keywords
+            if isinstance(raw_keywords, dict):
+                # 以 priority_* 数字后缀的顺序（若存在）进行排序，否则使用字典键的自然顺序
+                def _priority_key(k):
+                    parts = k.split('_')
+                    try:
+                        return (int(parts[-1]), k)
+                    except Exception:
+                        return (9999, k)
+                keys = sorted(raw_keywords.keys(), key=_priority_key)
+                flat = []
+                for k in keys:
+                    v = raw_keywords.get(k)
+                    if isinstance(v, list):
+                        flat.extend(v)
+                    elif isinstance(v, str):
+                        flat.append(v)
+                return flat
+            # 不支持的类型，返回 None
+            return None
+        
+        # 从配置文件中获取 keywords（优先：flat search_keywords -> current_keyword -> legacy keywords）
+        def _get_keywords_from_config():
+            search_cfg = self.config.get('search', {}) if isinstance(self.config, dict) else {}
+            # 1) 优先 flat 列表 search_keywords
+            high_level = search_cfg.get('search_keywords')
+            if high_level:
+                return high_level if isinstance(high_level, list) else [high_level]
+            # 2) fallback 到 current_keyword（单值或列表）
+            current_kw = search_cfg.get('current_keyword')
+            if current_kw:
+                if isinstance(current_kw, list):
+                    return current_kw
+                if isinstance(current_kw, str) and current_kw.strip():
+                    return [current_kw.strip()]
+            # 3) 兼容 legacy 的 keywords 字段（例如 priority_* 分组）
+            legacy = search_cfg.get('keywords')
+            return _flatten_keywords(legacy)
+        
+        # 从配置文件获取其他可选参数（如果 pipeline_config 未显式提供）
+        def _get_from_config_int(field_name, default=None):
+            search_cfg = self.config.get('search', {}) if isinstance(self.config, dict) else {}
+            val = search_cfg.get(field_name)
+            if isinstance(val, int):
+                return val
+            try:
+                # YAML 中可能是字符串，尝试转换
+                if isinstance(val, str) and val.isdigit():
+                    return int(val)
+            except Exception:
+                pass
+            return default
+        
+        # 选择生效的参数（优先 pipeline_config，回退到 config 文件）
+        effective_keywords = pipeline_config.search_keywords if pipeline_config.search_keywords else _get_keywords_from_config()
+        effective_locations = pipeline_config.search_locations if pipeline_config.search_locations else (self.config.get('search', {}) or {}).get('search_locations')
+        effective_max_jobs = pipeline_config.max_jobs_per_keyword if pipeline_config.max_jobs_per_keyword is not None else _get_from_config_int('max_jobs_per_keyword')
+        effective_max_pages = pipeline_config.max_pages if pipeline_config.max_pages is not None else _get_from_config_int('max_pages')
+        
+        # 验证必需字段
+        if not effective_keywords:
+            raise PipelineError("未提供搜索关键词：请在 PipelineConfig.search_keywords 中显式传入，或在 config/integration_config.yaml 的 search 部分配置 search_keywords 或 current_keyword（或 legacy keywords）。")
+        if effective_max_jobs is None:
+            # 如果仍然没有设置，采用默认值 40
+            effective_max_jobs = 40
+        if effective_max_pages is None:
+            effective_max_pages = 2
+        
+        # 将解析结果写回 pipeline_config，后续流程使用统一字段
+        pipeline_config.search_keywords = effective_keywords
+        pipeline_config.search_locations = effective_locations
+        pipeline_config.max_jobs_per_keyword = effective_max_jobs
+        pipeline_config.max_pages = effective_max_pages
+        
+        logger.info(f"🔍 DEBUG: 生效的关键词: {pipeline_config.search_keywords} (len={len(pipeline_config.search_keywords)})")
+        logger.info(f"🔍 DEBUG: 生效的地区: {pipeline_config.search_locations}")
+        logger.info(f"🔍 DEBUG: 生效的 max_jobs_per_keyword={pipeline_config.max_jobs_per_keyword}, max_pages={pipeline_config.max_pages}")
+        
         
         try:
             # 阶段1: 职位提取 - 注释掉用于语义相似度测试

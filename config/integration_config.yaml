@@ -576,6 +576,25 @@ search:
     - 软件工程师
     - 技术专家
   search_type: '2'
+  # 新增高阶配置（优先于 legacy keywords）
+  # 扁平化的关键词列表，会被代码优先使用（若在 PipelineConfig 中没有显式传入）
+  search_keywords:
+  - Python开发
+  - Python工程师
+  - 后端开发
+  - 数据分析师
+  - 机器学习
+  - 算法工程师
+  - 全栈开发
+  - 软件工程师
+  - 技术专家
+  # 搜索地区（用于构造更易懂的搜索位置列表）
+  search_locations:
+  - 上海
+  # 每个关键词最大抓取职位数（优先于 pipeline 中的默认值）
+  max_jobs_per_keyword: 40
+  # 最大抓取页数（优先于 pipeline 中的默认值）
+  max_pages: 2
 security:
   access_control:
     api_key_required: false

@@ -15,7 +15,7 @@ from .exceptions import ConfigError
 class ConfigManager:
     """配置管理器"""
     
-    def __init__(self, config_path: str = "config/config.yaml"):
+    def __init__(self, config_path: str = "config/integration_config.yaml"):
         """
         初始化配置管理器
         
